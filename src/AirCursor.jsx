@@ -3,9 +3,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Hands } from '@mediapipe/hands';
 import { Camera } from '@mediapipe/camera_utils';
-import { drawConnectors, drawLandmarks } from '@mediapipe/drawing_utils';
-import { HAND_CONNECTIONS } from '@mediapipe/hands';
-import { color } from 'framer-motion';
 
 const AirCursor = () => {
     // Refs for video, canvas, and cursors
@@ -162,13 +159,6 @@ const AirCursor = () => {
             // If landmarks are detected
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
                 const landmarks = results.multiHandLandmarks[0];
-
-                // Optional: Draw hand landmarks and connectors
-                // drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {
-                //     color: '#00FF00',
-                //     lineWidth: 5,
-                // });
-                // drawLandmarks(canvasCtx, landmarks, { color: '#FF0000', lineWidth: 2 });
 
                 // Get fingertips
                 const thumbTip = landmarks[4];
