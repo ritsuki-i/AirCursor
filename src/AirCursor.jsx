@@ -1,10 +1,11 @@
 // AirCursor.jsx
 
 import React, { useEffect, useRef, useState } from 'react';
+import PropTypes from 'prop-types';
 import { Hands } from '@mediapipe/hands';
 import { Camera } from '@mediapipe/camera_utils';
 
-const AirCursor = () => {
+const AirCursor = ({ buttonText = 'ハンドトラッキングシステムを使用する' }) => {
     // Refs for video, canvas, and cursors
     const videoRef = useRef(null);
     const handsRef = useRef(null);
@@ -392,7 +393,7 @@ const AirCursor = () => {
                 <button
                     onClick={() => setShowPopup(true)}
                 >
-                    ハンドトラッキングシステムを使用する
+                    {buttonText}
                 </button>
             )}
 
@@ -400,6 +401,7 @@ const AirCursor = () => {
             {showPopup && (
                 <div
                     style={{
+                        fontSize: '16px',
                         position: 'fixed',
                         top: 0,
                         left: 0,
@@ -631,4 +633,9 @@ const AirCursor = () => {
         </>
     );
 };
+
+AirCursor.propTypes = {
+    buttonText: PropTypes.string,
+};
+
 export default AirCursor;
