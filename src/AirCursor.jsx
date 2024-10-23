@@ -36,11 +36,11 @@ const AirCursor = ({ buttonText = 'ハンドトラッキングシステムを使
 
     // クリックイベントのある要素を取得
     /**
- * 指定した座標にあるクリック可能な要素を取得します。
- * @param {number} x - ビューポートのX座標
- * @param {number} y - ビューポートのY座標
- * @returns {Element|null} - クリック可能な要素、存在しない場合は null
- */
+     * 指定した座標にあるクリック可能な要素を取得します。
+     * @param {number} x - ビューポートのX座標
+     * @param {number} y - ビューポートのY座標
+     * @returns {Element|null} - クリック可能な要素、存在しない場合は null
+     */
     const getClickableElement = (x, y) => {
         // 指定した座標にあるすべての要素を取得（上から下へ）
         const elements = document.elementsFromPoint(x, y);
@@ -76,6 +76,12 @@ const AirCursor = ({ buttonText = 'ハンドトラッキングシステムを使
                 canvasRectRef.current = canvasRef.current.getBoundingClientRect();
             }
         };
+
+        // Check session storage for saved state
+        const savedShowSystem = sessionStorage.getItem('showSystem');
+        if (savedShowSystem === 'true') {
+            setShowSystem(true);
+        }
 
         // スクロール位置を追跡するuseEffect
         const handleScroll = () => {
@@ -345,17 +351,12 @@ const AirCursor = ({ buttonText = 'ハンドトラッキングシステムを使
         };
     }, [showSystem]); // showVideoを依存から外す
 
-    // Function to handle starting the system
-    const handleStartSystem = () => {
-        setShowPopup(false);
-        setShowSystem(true);
-    };
-
     // Function to handle configuration submission
     const handleConfigurationSubmit = (e) => {
         e.preventDefault();
         setShowPopup(false);
         setShowSystem(true);
+        sessionStorage.setItem('airCursorSystemActive', 'true');
     };
 
     // Function to get video style based on position
