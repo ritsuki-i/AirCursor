@@ -12,6 +12,22 @@ npm install air-cursor
 
 インストールが完了したら、`package.json`に`air-cursor`が含まれていることを確認してください。
 
+## アップグレード
+
+AirCursorの新しいバージョンがリリースされた場合、以下のコマンドを使用してアップグレードできます。
+
+```bash
+npm update air-cursor
+```
+
+または、特定のバージョンにアップグレードしたい場合は、次のようにバージョン番号を指定します：
+
+```bash
+npm install air-cursor@latest
+```
+
+`@latest`を指定すると、最も新しいバージョンがインストールされます。
+
 ## 使い方
 
 ### ReactコンポーネントにAirCursorをインポート

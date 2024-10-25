@@ -1,6 +1,7 @@
 // AirCursor.jsx
 
 import React, { useEffect, useRef, useState } from 'react';
+import ReactDOM from 'react-dom';
 import PropTypes from 'prop-types';
 import { Hands } from '@mediapipe/hands';
 import { Camera } from '@mediapipe/camera_utils';
@@ -588,89 +589,95 @@ const AirCursor = ({ buttonText = 'ハンドトラッキングシステムを使
             {/* Hand Tracking System Overlay */}
             {showSystem && (
                 <>
-                    <video
-                        ref={videoRef}
-                        className="input_video"
-                        autoPlay
-                        playsInline
-                        muted
-                        style={getVideoStyle()}
-                    ></video>
+                    {/* Canvas and Cursors using React Portals */}
+                    {ReactDOM.createPortal(
+                        <>
+                            <video
+                                ref={videoRef}
+                                className="input_video"
+                                autoPlay
+                                playsInline
+                                muted
+                                style={getVideoStyle()}
+                            ></video>
 
-                    {/* カメラ描画用 */}
-                    <canvas
-                        ref={secondCanvasRef}
-                        className="second_output_canvas"
-                        style={{
-                            ...getVideoStyle(), // ビデオと同じ位置とサイズを使う
-                            transform: 'scaleX(-1)', // 必要に応じてミラー表示を適用
-                            zIndex: 1000, // ビデオの下に描画するためのレイヤー
-                        }}
-                    ></canvas>
+                            {/* カメラ描画用 */}
+                            <canvas
+                                ref={secondCanvasRef}
+                                className="second_output_canvas"
+                                style={{
+                                    ...getVideoStyle(), // ビデオと同じ位置とサイズを使う
+                                    transform: 'scaleX(-1)', // 必要に応じてミラー表示を適用
+                                    zIndex: 1000, // ビデオの下に描画するためのレイヤー
+                                }}
+                            ></canvas>
 
-                    {/* 要素取得用 */}
-                    <canvas
-                        ref={canvasRef}
-                        className="output_canvas"
-                        style={{
-                            position: 'fixed',
-                            top: 0,
-                            left: 0,
-                            width: '100%',
-                            height: '100%',
-                            transform: 'scaleX(-1)', // ミラー表示を削除
-                            zIndex: -1,
-                        }}
-                    ></canvas>
+                            {/* 要素取得用 */}
+                            <canvas
+                                ref={canvasRef}
+                                className="output_canvas"
+                                style={{
+                                    position: 'fixed',
+                                    top: 0,
+                                    left: 0,
+                                    width: '100%',
+                                    height: '100%',
+                                    transform: 'scaleX(-1)', // ミラー表示を削除
+                                    zIndex: -1,
+                                }}
+                            ></canvas>
 
-                    {/* Red Cursor */}
-                    <div
-                        ref={redCursorRef}
-                        style={{
-                            position: 'absolute', // Absolute positioning relative to container
-                            width: '10px',
-                            height: '10px',
-                            backgroundColor: 'red',
-                            borderRadius: '50%',
-                            pointerEvents: 'none',
-                            transform: 'translate(-50%, -50%)',
-                            display: 'none',
-                            zIndex: 9999,
-                        }}
-                    ></div>
+                            {/* Red Cursor */}
+                            <div
+                                ref={redCursorRef}
+                                style={{
+                                    position: 'absolute', // Absolute positioning relative to container
+                                    width: '10px',
+                                    height: '10px',
+                                    backgroundColor: 'red',
+                                    borderRadius: '50%',
+                                    pointerEvents: 'none',
+                                    transform: 'translate(-50%, -50%)',
+                                    display: 'none',
+                                    zIndex: 9999,
+                                }}
+                            ></div>
 
-                    {/* Blue Cursor */}
-                    <div
-                        ref={blueCursorRef}
-                        style={{
-                            position: 'absolute', // Absolute positioning relative to container
-                            width: '10px',
-                            height: '10px',
-                            backgroundColor: 'blue',
-                            borderRadius: '50%',
-                            pointerEvents: 'none',
-                            transform: 'translate(-50%, -50%)',
-                            display: 'none',
-                            zIndex: 9999,
-                        }}
-                    ></div>
+                            {/* Blue Cursor */}
+                            <div
+                                ref={blueCursorRef}
+                                style={{
+                                    position: 'absolute', // Absolute positioning relative to container
+                                    width: '10px',
+                                    height: '10px',
+                                    backgroundColor: 'blue',
+                                    borderRadius: '50%',
+                                    pointerEvents: 'none',
+                                    transform: 'translate(-50%, -50%)',
+                                    display: 'none',
+                                    zIndex: 9999,
+                                }}
+                            ></div>
 
-                    {/* Yellow Cursor */}
-                    <div
-                        ref={yellowCursorRef}
-                        style={{
-                            position: 'absolute', // Absolute positioning relative to container
-                            width: '10px', // サイズを大きく
-                            height: '10px',
-                            backgroundColor: 'yellow',
-                            borderRadius: '50%',
-                            pointerEvents: 'auto', // イベントを受け取れるように
-                            transform: 'translate(-50%, -50%)',
-                            display: 'none',
-                            zIndex: 9999, // 前面に表示
-                            cursor: 'pointer', // ポインターに変更
-                        }}
-                    ></div>
+                            {/* Yellow Cursor */}
+                            <div
+                                ref={yellowCursorRef}
+                                style={{
+                                    position: 'absolute', // Absolute positioning relative to container
+                                    width: '10px', // サイズを大きく
+                                    height: '10px',
+                                    backgroundColor: 'yellow',
+                                    borderRadius: '50%',
+                                    pointerEvents: 'auto', // イベントを受け取れるように
+                                    transform: 'translate(-50%, -50%)',
+                                    display: 'none',
+                                    zIndex: 9999, // 前面に表示
+                                    cursor: 'pointer', // ポインターに変更
+                                }}
+                            ></div>
+                        </>,
+                        document.body // Render to body to keep cursors and canvas above other elements
+                    )}
                 </>
             )}
         </>
