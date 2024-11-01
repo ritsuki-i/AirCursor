@@ -37,6 +37,14 @@ const AirCursor = ({ buttonText = 'ハンドトラッキングシステムを使
 
     // スクロール位置を保持するリファレンスを作成
     const scrollYRef = useRef(0);
+    const lastTimeRef = useRef(null);
+
+    const minMovementThreshold = 5; // 最小移動閾値
+    const scrollSpeed = 0.1; // スクロール速度係数
+    // グローバル変数でなくuseRefを使って状態を管理
+    const velocityXRef = useRef(0);
+    const velocityYRef = useRef(0);
+    let friction = 0.9; // 摩擦率
 
     // クリックイベントのある要素を取得
     /**
@@ -71,7 +79,6 @@ const AirCursor = ({ buttonText = 'ハンドトラッキングシステムを使
 
         return null;
     };
-
 
     useEffect(() => {
         // Function to update canvasRectRef
@@ -238,35 +245,64 @@ const AirCursor = ({ buttonText = 'ハンドトラッキングシステムを使
                         secondCanvasCtx.fill();
                         secondCanvasCtx.stroke();
 
-                        // Show and position blue cursor
+                        // Show and position red cursor
                         redCursor.style.display = 'block';
                         const redCursorX = (x2 + x3) / 2;
                         const redCursorY = (y2 + y3) / 2;
                         redCursor.style.left = `${canvasElement.width - redCursorX}px`; // No mirroring
                         redCursor.style.top = `${redCursorY + scrollYRef.current}px`;
 
-                        // Handle scrolling
                         if (index_middle_distance > 40) {
-                            if (lastXRef.current !== null && lastYRef.current !== null) {
-                                const deltaX = (x1 + x2) / 2 - lastXRef.current;
-                                const deltaY = (y1 + y2) / 2 - lastYRef.current;
-                                window.scrollBy(deltaX * 2, -deltaY * 2);
+                            const currentX = (x1 + x2) / 2;
+                            const currentY = (y1 + y2) / 2;
+
+                            // lastXRef, lastYRef, lastTimeRefがnullの場合、初期値を設定する
+                            if (lastXRef.current === null || lastYRef.current === null || lastTimeRef.current === null) {
+                                lastXRef.current = currentX;
+                                lastYRef.current = currentY;
+                                lastTimeRef.current = Date.now();
+                            } else {
+                                const deltaX = currentX - lastXRef.current;
+                                const deltaY = currentY - lastYRef.current;
+                                
+                                // 動きが閾値を超えている場合のみ速度を計算
+                                if (Math.abs(deltaX) > minMovementThreshold || Math.abs(deltaY) > minMovementThreshold) {
+                                    const currentTime = Date.now();
+                                    const deltaTime = (currentTime - lastTimeRef.current) / 1000;
+
+                                    velocityXRef.current = (deltaX / deltaTime) * scrollSpeed;
+                                    velocityYRef.current = (deltaY / deltaTime) * scrollSpeed;
+
+                                    // 最新の時間を保存
+                                    lastTimeRef.current = currentTime;
+                                }
                             }
-                            lastXRef.current = (x1 + x2) / 2;
-                            lastYRef.current = (y1 + y2) / 2;
-                        } else {
-                            // Stop dragging
-                            isDraggingRef.current = false;
-                            lastXRef.current = null;
-                            lastYRef.current = null;
+
+                            // 現在の位置を保存
+                            lastXRef.current = currentX;
+                            lastYRef.current = currentY;
+                        }
+
+                        // スクロール実行
+                        window.scrollBy(velocityXRef.current, -velocityYRef.current);
+
+                        // 減衰によるスクロールの減少
+                        velocityXRef.current *= friction;
+                        velocityYRef.current *= friction;
+
+                        // スクロール速度が小さくなったら停止
+                        if (Math.abs(velocityXRef.current) < 0.1 && Math.abs(velocityYRef.current) < 0.1) {
+                            velocityXRef.current = 0;
+                            velocityYRef.current = 0;
                         }
                     } else {
-                        // Stop dragging if thumb and index are not close
+                        // 親指と人差し指が離れている場合にドラッグ解除
                         isDraggingRef.current = false;
                         lastXRef.current = null;
                         lastYRef.current = null;
+                        velocityXRef.current = 0;
+                        velocityYRef.current = 0;
                     }
-
                     // If index and middle finger are close
                     if (index_middle_distance <= 40) {
                         // Draw blue point
