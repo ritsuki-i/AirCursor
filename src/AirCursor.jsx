@@ -1,12 +1,15 @@
 // AirCursor.jsx
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useLayoutEffect } from 'react';
 import ReactDOM from 'react-dom';
 import PropTypes from 'prop-types';
 import { Hands } from '@mediapipe/hands';
 import { Camera } from '@mediapipe/camera_utils';
 import { drawConnectors, drawLandmarks } from '@mediapipe/drawing_utils';
 import { HAND_CONNECTIONS } from '@mediapipe/hands';
+import Lenis from '@studio-freight/lenis';
+import Button from '@mui/material/Button';
+import Checkbox from '@mui/material/Checkbox';
 
 const AirCursor = ({ buttonText = 'ハンドトラッキングシステムを使用する' }) => {
     // Refs for video, canvas, and cursors
@@ -46,6 +49,10 @@ const AirCursor = ({ buttonText = 'ハンドトラッキングシステムを使
     const velocityYRef = useRef(0);
     let friction = 0.9; // 摩擦率
 
+    // 慣性スクロール
+    const [lenis, setLenis] = useState(null);
+    const reqIdRef = useRef();
+
     // クリックイベントのある要素を取得
     /**
      * 指定した座標にあるクリック可能な要素を取得します。
@@ -79,6 +86,55 @@ const AirCursor = ({ buttonText = 'ハンドトラッキングシステムを使
 
         return null;
     };
+
+    useEffect(() => {
+        const animate = (time) => {
+            lenis?.raf(time);
+            reqIdRef.current = requestAnimationFrame(animate);
+        };
+        reqIdRef.current = requestAnimationFrame(animate);
+        return () => cancelAnimationFrame(reqIdRef.current);
+    }, [lenis]);
+
+    useEffect(() => {
+        let rafId;
+        const decayVelocity = () => {
+            // ドラッグ中でなく、かつ velocity がある場合のみ処理
+            if (!isDraggingRef.current && Math.abs(velocityYRef.current) > 0.1) {
+                // 摩擦による減衰
+                velocityYRef.current *= friction;
+                const currentScroll = window.scrollY;
+                const targetScroll = currentScroll - velocityYRef.current;
+                lenis?.scrollTo(targetScroll, {
+                    duration: 0,
+                    easing: (t) => t,
+                    force: true,
+                });
+            }
+            rafId = requestAnimationFrame(decayVelocity);
+        };
+        decayVelocity();
+        return () => cancelAnimationFrame(rafId);
+    }, [lenis]);
+
+
+    useLayoutEffect(() => {
+        const lenis = new Lenis({
+            duration: 1.2,
+            easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+            direction: 'vertical',
+            gestureDirection: 'vertical',
+            smooth: true,
+            smoothTouch: false,
+            touchMultiplier: 2,
+        });
+        setLenis(lenis);
+
+        return () => {
+            lenis.destroy();
+            setLenis(null);
+        };
+    }, []);
 
     useEffect(() => {
         // Function to update canvasRectRef
@@ -253,54 +309,38 @@ const AirCursor = ({ buttonText = 'ハンドトラッキングシステムを使
                         redCursor.style.top = `${redCursorY + scrollYRef.current}px`;
 
                         if (index_middle_distance > 40) {
-                            const currentX = (x1 + x2) / 2;
                             const currentY = (y1 + y2) / 2;
-
-                            // lastXRef, lastYRef, lastTimeRefがnullの場合、初期値を設定する
-                            if (lastXRef.current === null || lastYRef.current === null || lastTimeRef.current === null) {
-                                lastXRef.current = currentX;
+                            if (lastYRef.current === null || lastTimeRef.current === null) {
                                 lastYRef.current = currentY;
                                 lastTimeRef.current = Date.now();
                             } else {
-                                const deltaX = currentX - lastXRef.current;
                                 const deltaY = currentY - lastYRef.current;
-                                
-                                // 動きが閾値を超えている場合のみ速度を計算
-                                if (Math.abs(deltaX) > minMovementThreshold || Math.abs(deltaY) > minMovementThreshold) {
+                                if (Math.abs(deltaY) > minMovementThreshold) {
                                     const currentTime = Date.now();
                                     const deltaTime = (currentTime - lastTimeRef.current) / 1000;
-
-                                    velocityXRef.current = (deltaX / deltaTime) * scrollSpeed;
                                     velocityYRef.current = (deltaY / deltaTime) * scrollSpeed;
-
-                                    // 最新の時間を保存
                                     lastTimeRef.current = currentTime;
                                 }
+                                lastYRef.current = currentY;
                             }
-
-                            // 現在の位置を保存
-                            lastXRef.current = currentX;
-                            lastYRef.current = currentY;
-                        }
-
-                        // スクロール実行
-                        window.scrollBy(velocityXRef.current, -velocityYRef.current);
-
-                        // 減衰によるスクロールの減少
-                        velocityXRef.current *= friction;
-                        velocityYRef.current *= friction;
-
-                        // スクロール速度が小さくなったら停止
-                        if (Math.abs(velocityXRef.current) < 0.1 && Math.abs(velocityYRef.current) < 0.1) {
-                            velocityXRef.current = 0;
+                        } else {
                             velocityYRef.current = 0;
                         }
+
+                        // Lenis による縦方向スクロール更新
+                        const currentScroll = window.scrollY;
+                        const targetScroll = currentScroll - velocityYRef.current;
+                        lenis?.scrollTo(targetScroll, {
+                            duration: 0,
+                            easing: (t) => t,
+                            force: true,
+                        });
+
                     } else {
                         // 親指と人差し指が離れている場合にドラッグ解除
                         isDraggingRef.current = false;
-                        lastXRef.current = null;
                         lastYRef.current = null;
-                        velocityXRef.current = 0;
+                        lastTimeRef.current = null;
                         velocityYRef.current = 0;
                     }
                     // If index and middle finger are close
@@ -458,11 +498,9 @@ const AirCursor = ({ buttonText = 'ハンドトラッキングシステムを使
         <>
             {/* Initial Button */}
             {!showSystem && (
-                <button
-                    onClick={() => setShowPopup(true)}
-                >
+                <Button variant="contained" color="primary" onClick={() => setShowPopup(true)}>
                     {buttonText}
-                </button>
+                </Button>
             )}
 
             {/* Configuration Popup */}
@@ -530,7 +568,7 @@ const AirCursor = ({ buttonText = 'ハンドトラッキングシステムを使
                             {/* Confirmation Checkbox */}
                             <div style={{ marginBottom: '20px' }}>
                                 <label>
-                                    <input
+                                    <Checkbox
                                         type="checkbox"
                                         checked={instructionsConfirmed}
                                         onChange={(e) => setInstructionsConfirmed(e.target.checked)}
@@ -541,7 +579,7 @@ const AirCursor = ({ buttonText = 'ハンドトラッキングシステムを使
 
                             <div style={{ marginBottom: '20px' }}>
                                 <label>
-                                    <input
+                                    <Checkbox
                                         type="checkbox"
                                         checked={showVideo}
                                         onChange={(e) => setShowVideo(e.target.checked)}
@@ -603,16 +641,9 @@ const AirCursor = ({ buttonText = 'ハンドトラッキングシステムを使
                             {/* Show the Start button only if instructions are confirmed */}
                             {instructionsConfirmed && (
                                 <div style={{ textAlign: 'center' }}>
-                                    <button
-                                        type="submit"
-                                        style={{
-                                            padding: '10px 20px',
-                                            fontSize: '16px',
-                                            cursor: 'pointer',
-                                        }}
-                                    >
+                                    <Button type="submit" variant="contained" color="primary" >
                                         開始
-                                    </button>
+                                    </Button>
                                 </div>
                             )}
                         </form>

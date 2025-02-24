@@ -12,7 +12,7 @@ const styles = {
     fontFamily: 'Arial, sans-serif',
   },
   header: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: '#4CAf40',
     padding: '30px', // 20px * 1.5
     textAlign: 'center',
     color: 'white',
@@ -27,7 +27,7 @@ const styles = {
     backgroundColor: '#f0f0f0',
   },
   footer: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: '#4CAf40',
     padding: '30px', // 20px * 1.5
     textAlign: 'center',
     color: 'white',
