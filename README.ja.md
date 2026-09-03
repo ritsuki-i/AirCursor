@@ -4,6 +4,8 @@
 
 MediaPipe Hands ベース。ウェブカメラ以外の機材は不要です。処理はすべてブラウザ内で完結し、映像が端末の外に出ることはありません。
 
+**[デモを試す →](https://ritsuki-i.github.io/AirCursor/)** — ウェブカメラがあればブラウザでそのまま動きます。
+
 [English README](./README.md)
 
 ```bash

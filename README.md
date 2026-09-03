@@ -4,6 +4,8 @@
 
 Built on MediaPipe Hands. No hardware beyond a webcam. Runs entirely in the browser; no video ever leaves the device.
 
+**[Live demo →](https://ritsuki-i.github.io/AirCursor/)** — run it in your browser with a webcam.
+
 [日本語版 README](./README.ja.md)
 
 ```bash

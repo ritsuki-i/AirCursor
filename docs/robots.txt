@@ -1,0 +1,9 @@
+# https://ritsuki-i.github.io/AirCursor/
+#
+# Everything here is meant to be found. The one exception carries its own
+# `noindex` meta tag: tools/labeler.html is a recording tool, not documentation,
+# and it has no business competing with the demo in a result page.
+User-agent: *
+Allow: /
+
+Sitemap: https://ritsuki-i.github.io/AirCursor/sitemap.xml
