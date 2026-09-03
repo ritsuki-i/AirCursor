@@ -1,2 +1,7 @@
 node_modules
 dist
+*.tgz
+
+# The debug harness installs the package from `npm pack`'s tarball, which the
+# `*.tgz` rule above already covers. Its build output does not need committing.
+debug/build/

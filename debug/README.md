@@ -1,70 +1,66 @@
-# Getting Started with Create React App
+# debug — a harness for the published package
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+This app exists to answer one question the repo's own tests cannot: **does the
+thing people install actually work?**
 
-## Available Scripts
+It imports `air-cursor` from `node_modules`, installed from the tarball
+`npm pack` produces. That is deliberate, and it is the whole point:
 
-In the project directory, you can run:
+- a path dependency (`"air-cursor": "file:.."`) symlinks the working tree, which
+  bypasses the `files` allowlist, the `exports` map and the compiled `dist/`
+  entirely. A package can pass every test in its own repo and still fail to
+  import once published, and a path dependency will not catch it.
+- the tarball is byte-for-byte what `npm publish` uploads.
 
-### `npm start`
+It previously imported a 26 kB copy of `AirCursor.jsx` kept inside `src/`, so it
+tested nothing but that copy. The copy is gone.
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+## Running it
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+Whenever the library changes:
 
-### `npm test`
+```bash
+cd debug
+npm run use-local      # builds, packs and installs the tarball in one step
+npm start
+```
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+`use-local` has to be repeated after every library change: npm caches the
+tarball by path, so reinstalling is what copies the new one in.
 
-### `npm run build`
+It is also the step a **fresh clone** needs before `npm install` will work here
+at all. The dependency points at `../air-cursor-<version>.tgz`, and that tarball
+is gitignored — a build artefact, not source — so it does not exist until
+something packs it.
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+## What each panel checks
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+| Panel | Checks |
+| --- | --- |
+| Plain div | a click reaches an `onClick` on something that is not a button or a link |
+| Hover | `pointerenter` / `pointerleave`, which tooltips and menus rely on |
+| Right click | off-hand fist turns the next click into `contextmenu` |
+| Drag | `pointerdown` → `pointermove` → `pointerup`, captured to the press target |
+| Nested scroll | grabbing inside a scrollable panel scrolls the panel, not the page |
+| Region capture | a two-hand selection is reported and cropped by the package's own `cropRegion` |
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+The HUD shows **render** and **infer** rates separately. They share the main
+thread and trade against each other, so a high infer figure next to a low render
+one is the whole story of a stuttering page — averaged into one number, that is
+exactly what disappears.
 
-### `npm run eject`
+## Capture without a camera
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+The **Capture without a camera** button runs the capture path with a rectangle
+taken from the viewport, so the crop can be checked without granting camera
+access or making the gesture.
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+**Scroll down before pressing it.** The coordinate bug it exists to catch — the
+crop coming from the top of the document rather than from the viewport — is
+invisible at the top of the page, which is the one place it happens to be
+correct.
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+## The page is deliberately taller than the viewport
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
-
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
-
-### Code Splitting
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+Same reason. A harness that fits on one screen cannot catch anything to do with
+scroll offsets.

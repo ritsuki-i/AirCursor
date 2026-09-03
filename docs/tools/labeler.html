@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>AirCursor — gesture labeler</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<style>
+  :root {
+    --void: #0a0507; --panel: #150a0e; --panel-2: #1f0f15; --line: #3a1a22;
+    --text: #f6ece9; --text-2: #d2bcb8; --muted: #9d8184;
+    --crimson: #ff4257; --gold: #e9bd6a; --ok: #57c08a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--void); color: var(--text);
+    font: 14px/1.6 system-ui, -apple-system, 'Segoe UI', sans-serif;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 22px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; font-size: 13px; }
+  .cols { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  .card + .card { margin-top: 16px; }
+  h2 { font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--gold); margin: 0 0 12px; font-weight: 600; }
+
+  .stage { position: relative; aspect-ratio: 16/9; background: #000; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); }
+  .stage video, .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+
+  button {
+    font: inherit; font-weight: 600; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--panel-2); color: var(--text); padding: 8px 16px; cursor: pointer;
+  }
+  button:hover:not(:disabled) { border-color: var(--gold); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.primary { background: var(--crimson); border-color: transparent; color: #1a0208; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 10px 6px 0; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 500; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+  tbody tr:last-child td { border-bottom: none; }
+  .num { font-variant-numeric: tabular-nums; text-align: right; font-family: ui-monospace, monospace; }
+
+  .classes { display: grid; gap: 8px; }
+  .cls {
+    display: grid; grid-template-columns: 30px 1fr 74px; gap: 10px; align-items: center;
+    padding: 9px 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel-2);
+  }
+  .cls.armed { border-color: var(--crimson); box-shadow: 0 0 0 1px var(--crimson) inset; }
+  .cls kbd {
+    display: grid; place-items: center; height: 26px; border-radius: 6px;
+    border: 1px solid var(--line); background: var(--void); font: 600 13px ui-monospace, monospace; color: var(--gold);
+  }
+  .cls .n { text-align: right; font-family: ui-monospace, monospace; color: var(--text-2); }
+  .cls small { display: block; color: var(--muted); font-size: 11.5px; }
+
+  pre {
+    background: var(--void); border: 1px solid var(--line); border-radius: 8px;
+    padding: 12px 14px; overflow-x: auto; font-size: 12.5px; margin: 0;
+    font-family: ui-monospace, monospace; color: var(--text-2); white-space: pre;
+  }
+  .verdict { font-weight: 600; }
+  .verdict.good { color: var(--ok); }
+  .verdict.weak { color: var(--gold); }
+  .verdict.bad { color: var(--crimson); }
+  .status { color: var(--muted); font-size: 13px; min-height: 1.5em; margin: 12px 0 0; }
+  .live { font-family: ui-monospace, monospace; font-size: 13px; }
+  .live b { color: var(--gold); font-weight: 600; }
+  .hint { color: var(--muted); font-size: 12.5px; margin: 10px 0 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Gesture labeler</h1>
+  <p class="sub">
+    Hold a pose, hold its key, and samples are recorded. Then Analyse turns the
+    recording into thresholds, instead of them being guessed.
+  </p>
+
+  <div class="cols">
+    <div>
+      <div class="card">
+        <h2>Camera</h2>
+        <div class="stage">
+          <video id="video" autoplay playsinline muted></video>
+          <canvas id="skeleton" width="640" height="360"></canvas>
+        </div>
+        <div class="row" style="margin-top: 12px;">
+          <button id="start" class="primary" type="button">Start camera</button>
+          <button id="clear" type="button">Clear samples</button>
+          <button id="export" type="button">Export JSON</button>
+          <label class="row" style="gap:6px; color: var(--muted); font-size: 12.5px;">
+            <input id="import" type="file" accept="application/json" style="display:none">
+            <button id="importBtn" type="button">Import JSON</button>
+          </label>
+        </div>
+        <p class="status" id="status">Press Start camera, then hold a key while holding the pose.</p>
+      </div>
+
+      <div class="card">
+        <h2>Live measurements</h2>
+        <div class="live" id="live">no hand</div>
+        <p class="hint">
+          All distances are in hand units — the wrist to middle-knuckle length —
+          so they do not change with how far you sit from the camera.
+        </p>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <h2>Classes — hold the key while holding the pose</h2>
+        <div class="classes" id="classes"></div>
+        <p class="hint">
+          Record each class from several distances, angles and hand positions.
+          Aim for a few hundred samples each; the ones that matter most are the
+          near misses, so include poses that <em>almost</em> look like a gesture.
+        </p>
+      </div>
+
+      <div class="card">
+        <h2>Analysis</h2>
+        <div class="row">
+          <button id="analyse" class="primary" type="button">Analyse</button>
+          <button id="copy" type="button" disabled>Copy thresholds</button>
+        </div>
+        <div id="report" style="margin-top: 14px;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="./labeler.js"></script>
+</body>
+</html>

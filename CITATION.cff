@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+title: "AirCursor: A Touchless Pointer for the Web"
+message: >-
+  If you use AirCursor in a product, a publication, or any other work,
+  please cite it using the metadata below.
+type: software
+authors:
+  - family-names: Ishikawa
+    given-names: Ritsuki
+repository-code: "https://github.com/ritsuki-i/AirCursor"
+url: "https://ritsuki-i.github.io/AirCursor/"
+abstract: >-
+  A browser library that turns webcam hand tracking into a full pointer:
+  hover, click, right click, double click, drag and scroll, delivered as
+  synthetic pointer events that ordinary web interfaces already understand.
+keywords:
+  - hand tracking
+  - gesture control
+  - touchless interface
+  - human-computer interaction
+  - mediapipe
+license: MIT
+version: 2.0.0

@@ -10,6 +10,8 @@
     "@testing-library/jest-dom": "^5.17.0",
     "@testing-library/react": "^13.4.0",
     "@testing-library/user-event": "^13.5.0",
+    "air-cursor": "file:../air-cursor-2.0.0.tgz",
+    "html2canvas": "^1.4.1",
     "lucide-react": "^0.475.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -17,6 +19,8 @@
     "web-vitals": "^2.1.4"
   },
   "scripts": {
+    "//use-local": "Rebuild the library, pack it, and install that tarball here. The tarball is gitignored, so this is the step a fresh clone needs before npm install will resolve air-cursor.",
+    "use-local": "cd .. && npm run build && npm pack && cd debug && npm install ../air-cursor-2.0.0.tgz",
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
@@ -39,5 +43,8 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "devDependencies": {
+    "typescript": "^4.9.5"
   }
 }

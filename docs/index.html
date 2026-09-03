@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>AirCursor — touchless pointer for the web</title>
+<meta name="description" content="Add touchless gesture interaction to your web product. AirCursor turns webcam hand tracking into standards-based pointer events for kiosks, installations, demos, and web apps.">
+<link rel="canonical" href="https://ritsuki-i.github.io/AirCursor/">
+
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://ritsuki-i.github.io/AirCursor/">
+<meta property="og:title" content="AirCursor — touchless pointer for the web">
+<meta property="og:description" content="Cast, don't click. Control any web page with your hand through a webcam — hover, click, right click, drag and scroll, as real pointer events.">
+<meta property="og:site_name" content="AirCursor">
+<meta property="og:image" content="https://ritsuki-i.github.io/AirCursor/assets/aircursor-icon.png">
+<meta property="og:image:width" content="500">
+<meta property="og:image:height" content="500">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="AirCursor — touchless pointer for the web">
+<meta name="twitter:description" content="Cast, don't click. Hand gestures become real pointer events, so ordinary web UI just works.">
+<meta name="twitter:image" content="https://ritsuki-i.github.io/AirCursor/assets/aircursor-icon.png">
+
+<link rel="icon" type="image/png" href="./assets/aircursor-icon.png">
+<link rel="apple-touch-icon" href="./assets/aircursor-icon.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="./assets/styles.css">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "AirCursor",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Any browser with a webcam",
+  "description": "A browser library that turns webcam hand tracking into a full pointer: hover, click, right click, drag and scroll, delivered as synthetic pointer events that ordinary web interfaces already understand.",
+  "url": "https://ritsuki-i.github.io/AirCursor/",
+  "codeRepository": "https://github.com/ritsuki-i/AirCursor",
+  "programmingLanguage": "JavaScript",
+  "license": "https://opensource.org/licenses/MIT",
+  "softwareVersion": "2.0.0",
+  "image": "https://ritsuki-i.github.io/AirCursor/assets/aircursor-icon.png",
+  "author": { "@type": "Person", "name": "Ritsuki Ishikawa" },
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+</head>
+<body>
+
+<header class="hero">
+  <canvas id="spellfield" aria-hidden="true"></canvas>
+  <div class="wrap">
+    <div class="topbar">
+      <span class="wordmark">AirCursor</span>
+      <nav class="toplinks">
+        <a href="#gestures"><span class="lang-en">Gestures</span><span class="lang-ja">操作</span></a>
+        <a href="#try"><span class="lang-en">Demo</span><span class="lang-ja">デモ</span></a>
+        <a href="#install"><span class="lang-en">Install</span><span class="lang-ja">導入</span></a>
+        <a href="https://github.com/ritsuki-i/AirCursor">GitHub</a>
+        <button id="language-toggle" class="language-toggle" type="button" aria-label="日本語に切り替える">日本語</button>
+      </nav>
+    </div>
+
+    <div class="hero-content">
+    <p class="hero-audience"><span class="lang-en">FOR PRODUCT TEAMS · KIOSKS · INSTALLATIONS</span><span class="lang-ja">プロダクトチーム · キオスク · 展示体験向け</span></p>
+    <div class="hero-copy">
+      <h1 class="lang-en"><span class="line"><em>Control</em>,</span><span class="line">without touch.</span></h1>
+      <h1 class="lang-ja"><span class="line">触れずに、</span><span class="line"><em>操る。</em></span></h1>
+    </div>
+    <p class="tagline lang-en">
+      Add touchless interaction to the web product you already ship. AirCursor turns
+      webcam hand tracking into <strong>standards-based pointer events</strong>, so kiosks,
+      installations, demos, and web apps gain gesture control without a custom interaction
+      layer. Processing stays on-device.
+    </p>
+    <p class="tagline lang-ja">既存のWebプロダクトに、非接触のインタラクションを追加。AirCursorは手の動きを標準的なポインターイベントへ変換し、キオスク、展示、デモ、Webアプリを独自の操作レイヤーなしでジェスチャー対応にします。映像処理は端末内で完結します。</p>
+
+    <div class="actions">
+      <button id="cast" class="btn" type="button"><span class="lang-en">Start</span><span class="lang-ja">開始</span></button>
+      <span class="install"><code>npm install air-cursor</code><button id="copy" type="button"><span class="lang-en">copy</span><span class="lang-ja">コピー</span></button></span>
+    </div>
+    <p class="status" id="status">Move your mouse to stir the field. Press Start to hand it over to your hand.</p>
+    </div>
+
+    <aside class="gesture-guide" aria-label="Gesture guide">
+      <svg viewBox="0 0 280 250" role="img" aria-label="Start, pointer and click gesture animation">
+        <defs>
+          <linearGradient id="mouse-metal" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#5b421b" stop-opacity=".78"/>
+            <stop offset=".48" stop-color="#1a1006" stop-opacity=".9"/>
+            <stop offset="1" stop-color="#8f6827" stop-opacity=".62"/>
+          </linearGradient>
+          <radialGradient id="pointer-light">
+            <stop offset="0" stop-color="#fff8e8"/>
+            <stop offset=".16" stop-color="#ff7584"/>
+            <stop offset=".5" stop-color="#ff1839" stop-opacity=".72"/>
+            <stop offset="1" stop-color="#b21230" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+        <g class="tutorial-stage stage-cast">
+          <text class="tutorial-title lang-en" x="18" y="28">START</text>
+          <text class="tutorial-title lang-ja" x="18" y="28">開始</text>
+          <rect class="cast-demo-button" x="78" y="92" width="124" height="48" rx="24"/>
+          <text class="cast-demo-label lang-en" x="140" y="122" text-anchor="middle">Start</text>
+          <text class="cast-demo-label lang-ja" x="140" y="122" text-anchor="middle">開始</text>
+          <path class="demo-arrow" d="M96 117 V155 L105 146 L113 164 L123 159 L114 142 H127 Z"/>
+          <circle class="cast-ripple" cx="108" cy="135" r="15"/>
+        </g>
+
+        <g class="tutorial-stage stage-pointer">
+          <text class="tutorial-title" x="18" y="28">POINTER</text>
+          <g class="pointer-hand">
+            <image class="hand-image" href="./assets/gesture-pointer.webp" x="5" y="37" width="154" height="154"/>
+            <g class="pointer-light">
+              <circle class="pointer-light-halo" cx="82" cy="44" r="20"/>
+              <path class="pointer-rays" d="M82 16 V28 M82 60 V72 M54 44 H66 M98 44 H110 M62 24 L70 32 M94 56 L102 64 M62 64 L70 56 M94 32 L102 24"/>
+              <circle class="pointer-light-core" cx="82" cy="44" r="3.5"/>
+            </g>
+          </g>
+          <g class="pointer-cursor">
+            <path class="cursor-line" d="M188 65 V103 L197 94 L205 112 L215 107 L206 90 H219 Z"/>
+          </g>
+          <path class="motion-path" d="M143 177 C174 157 205 137 229 109"/>
+        </g>
+
+        <g class="tutorial-stage stage-click">
+          <text class="tutorial-title" x="18" y="28">CLICK</text>
+          <g class="click-hand">
+            <image class="hand-image click-ready-image" href="./assets/gesture-click-ready.webp" x="5" y="37" width="154" height="154"/>
+            <image class="hand-image click-active-image" href="./assets/gesture-click-active.webp" x="5" y="37" width="154" height="154"/>
+            <g class="click-light">
+              <circle class="pointer-light-halo" cx="82" cy="44" r="20"/>
+              <path class="pointer-rays" d="M82 16 V28 M82 60 V72 M54 44 H66 M98 44 H110 M62 24 L70 32 M94 56 L102 64 M62 64 L70 56 M94 32 L102 24"/>
+              <circle class="pointer-light-core" cx="82" cy="44" r="3.5"/>
+            </g>
+          </g>
+          <g class="mouse-demo">
+            <path class="mouse-shadow" d="M178 137 C178 106 191 89 212 89 C233 89 246 106 246 137 V164 C246 187 232 201 212 201 C192 201 178 187 178 164 Z"/>
+            <path class="mouse-body" d="M181 134 C181 105 193 92 212 92 C231 92 243 105 243 134 V162 C243 184 231 196 212 196 C193 196 181 184 181 162 Z"/>
+            <path class="mouse-highlight" d="M187 132 C188 108 197 99 211 98"/>
+            <path class="mouse-divider" d="M212 94 V132 M182 132 H242"/>
+            <path class="mouse-left" d="M182 131 V126 C183 105 194 94 211 94 V131 Z"/>
+            <rect class="mouse-wheel-slot" x="205" y="102" width="14" height="27" rx="7"/>
+            <rect class="mouse-wheel" x="209" y="106" width="6" height="17" rx="3"/>
+            <path class="mouse-detail" d="M209 110 H215 M209 115 H215 M209 120 H215"/>
+          </g>
+        </g>
+
+      </svg>
+    </aside>
+  </div>
+</header>
+
+<div id="region-box" hidden><span id="region-hint"></span></div>
+
+<!-- The crop itself lands in the Region capture panel further down the page,
+     which is nowhere near where the gesture is made. This reports the outcome
+     where the user is actually looking. -->
+<div id="region-toast" hidden>
+  <img id="region-toast-img" alt="" hidden>
+  <span id="region-toast-text"></span>
+</div>
+
+<main>
+
+<!-- =========================== gestures ============================ -->
+<section class="band wrap" id="gestures">
+  <p class="eyebrow">Gestures</p>
+  <h2><span class="lang-en">Five gestures. Two hands.</span><span class="lang-ja">5つの操作。2つの手。</span></h2>
+  <div class="gesture-grid">
+    <article class="gesture-card">
+      <div class="gesture-role"><span class="lang-en">RIGHT HAND</span><span class="lang-ja">右手</span></div>
+      <figure class="gesture-visual"><img src="./assets/gesture-pointer.webp" alt="Index and middle fingertips together"></figure>
+      <h3><span class="lang-en">Pointer</span><span class="lang-ja">ポインター</span></h3>
+      <p><span class="lang-en">Join your index and middle fingertips. Move your hand to point.</span><span class="lang-ja">人差し指と中指の先を合わせ、手を動かしてポインターを操作します。</span></p>
+    </article>
+
+    <article class="gesture-card">
+      <div class="gesture-role"><span class="lang-en">RIGHT HAND</span><span class="lang-ja">右手</span></div>
+      <figure class="gesture-visual gesture-sequence">
+        <img src="./assets/gesture-click-ready.webp" alt="Pointer gesture with thumb open">
+        <span aria-hidden="true">→</span>
+        <img src="./assets/gesture-click-active.webp" alt="Thumb joins the pointer gesture">
+      </figure>
+      <h3><span class="lang-en">Click & drag</span><span class="lang-ja">クリック・ドラッグ</span></h3>
+      <p><span class="lang-en">From Pointer, bring in your thumb to click. Keep the three fingertips together to drag.</span><span class="lang-ja">ポインター状態から親指を合わせてクリック。3本を合わせたまま動かすとドラッグします。</span></p>
+    </article>
+
+    <article class="gesture-card">
+      <div class="gesture-role"><span class="lang-en">RIGHT HAND</span><span class="lang-ja">右手</span></div>
+      <figure class="gesture-visual"><img src="./assets/gesture-grab.webp" alt="Thumb and index finger pinched with other fingers open"></figure>
+      <h3><span class="lang-en">Grab & scroll</span><span class="lang-ja">つかんでスクロール</span></h3>
+      <p><span class="lang-en">Pinch thumb and index only, keeping the other fingers apart. Move to scroll the page.</span><span class="lang-ja">他の指を離したまま親指と人差し指だけをつまみ、手を動かしてスクロールします。</span></p>
+    </article>
+
+    <article class="gesture-card region-gesture-card">
+      <div class="gesture-role"><span class="lang-en">LEFT + RIGHT HAND</span><span class="lang-ja">左手＋右手</span></div>
+      <figure class="gesture-visual gesture-sequence">
+        <img src="./assets/gesture-region-start.webp" alt="Both thumb-and-index pinches meeting at one point">
+        <span aria-hidden="true">→</span>
+        <img src="./assets/gesture-region-spread.webp" alt="Right hand at the upper-right and left hand at the lower-left defining a green screenshot area">
+      </figure>
+      <h3><span class="lang-en">Select a screenshot area</span><span class="lang-ja">スクリーンショット範囲を選択</span></h3>
+      <p><span class="lang-en">Meet both pinches at one point, then spread to opposite corners. Open both hands to freeze the green area, then pinch once with each hand to capture it.</span><span class="lang-ja">両手のつまみを一点で合わせ、対角方向へ広げます。両手を開いて緑の範囲を固定し、左右それぞれでもう一度つまむとスクリーンショットを撮影します。</span></p>
+    </article>
+
+    <article class="gesture-card">
+      <div class="gesture-role"><span class="lang-en">LEFT + RIGHT HAND</span><span class="lang-ja">左手＋右手</span></div>
+      <figure class="gesture-visual gesture-sequence modifier-sequence">
+        <img src="./assets/gesture-off-fist.webp" alt="Left hand closed into a fist">
+        <span aria-hidden="true">＋</span>
+        <img src="./assets/gesture-click-active.webp" alt="Right hand click gesture">
+        <span class="gesture-result"><span class="lang-en">RIGHT CLICK</span><span class="lang-ja">右クリック</span></span>
+      </figure>
+      <h3><span class="lang-en">Right click modifier</span><span class="lang-ja">右クリック修飾</span></h3>
+      <p><span class="lang-en">Hold your left hand in a fist, then click with your right hand. The click becomes a right click.</span><span class="lang-ja">左手を握ったまま右手でクリックすると、右クリックとして送出されます。</span></p>
+    </article>
+  </div>
+</section>
+
+<!-- ============================== try ============================== -->
+<section class="band wrap" id="try">
+  <p class="eyebrow">Product-ready demo</p>
+  <h2>Your existing interface, now touchless.</h2>
+  <p class="lede">
+    These panels listen the way ordinary application code listens — not the way a demo
+    would be written to flatter a gesture library. Start the camera above and work
+    through them. Your mouse drives them too, so you can compare.
+  </p>
+
+  <div class="grid">
+    <div class="pad">
+      <h3>A plain div</h3>
+      <p>Not a button, not a link. Just <code>&lt;div onClick&gt;</code> — the case a tag whitelist can never reach.</p>
+      <div class="target" id="t-div">Click me</div>
+      <div class="count" id="c-div">0</div>
+    </div>
+
+    <div class="pad">
+      <h3>Hover</h3>
+      <p>Driven by <code>pointerenter</code> and <code>pointerleave</code>, the events tooltips and menus rely on.</p>
+      <div class="target" id="t-hover">Point at me</div>
+    </div>
+
+    <div class="pad">
+      <h3>Right click</h3>
+      <p>Make a fist with your off hand, then click. Fires a real <code>contextmenu</code>.</p>
+      <div class="target" id="t-ctx">Right click me</div>
+      <div id="ctx-menu" hidden><div>Inspect the spell</div><div>Copy incantation</div></div>
+      <div class="count" id="c-ctx">0</div>
+    </div>
+
+    <div class="pad">
+      <h3>Drag</h3>
+      <p>Pinch and hold, then move. A <code>pointerdown</code> → <code>pointermove</code> → <code>pointerup</code> sequence.</p>
+      <div id="drag-track"><div id="t-drag"></div></div>
+      <div class="count" id="c-drag">0%</div>
+    </div>
+
+    <div class="pad">
+      <h3>Nested scroll</h3>
+      <p>Grab inside the panel and the panel scrolls, not the page.</p>
+      <ul id="t-scroll"></ul>
+    </div>
+
+    <div class="pad">
+      <h3>Region capture</h3>
+      <p>Pinch with <em>both</em> hands to frame an area, open them, then tap once with each hand. The crop lands here, and the result is reported next to your hands.</p>
+      <div id="shot-frame">
+        <img id="shot-img" alt="The area you last framed with both hands" hidden>
+        <span id="shot-placeholder">Nothing framed yet</span>
+      </div>
+      <!-- The crop is only shown, never written to disk on its own: saving a
+           file on every gesture is a side effect nobody asked for. This is the
+           deliberate step. -->
+      <button id="shot-save" type="button" disabled>Save PNG</button>
+      <div class="count" id="c-shot">0</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ install ============================ -->
+<section class="band wrap" id="install">
+  <p class="eyebrow">Install</p>
+  <h2>Ship it in three lines.</h2>
+  <div class="two-col">
+    <div>
+      <p class="lede">
+        The component renders a start button and handles the consent step and camera
+        preview. Once a visitor grants access, the rest of your page becomes operable
+        by hand — you change nothing else.
+      </p>
+<pre><code><span class="c">// React</span>
+<span class="k">import</span> AirCursor <span class="k">from</span> <span class="s">'air-cursor'</span>;
+
+<span class="k">export default function</span> App() {
+  <span class="k">return</span> &lt;AirCursor /&gt;;
+}</code></pre>
+    </div>
+    <div>
+      <p class="lede">
+        The engine has no React dependency, so plain JavaScript, Vue and Svelte are all
+        first-class. The individual pieces — <code>VirtualPointer</code>,
+        <code>GrabScroller</code>, <code>TwoHandRecognizer</code>,
+        <code>OneEuroFilter</code> — are exported too, if you want your own mapping.
+      </p>
+<pre><code><span class="c">// anything else</span>
+<span class="k">import</span> { AirCursorEngine } <span class="k">from</span> <span class="s">'air-cursor'</span>;
+
+<span class="k">const</span> engine = <span class="k">new</span> AirCursorEngine({
+  video: document.querySelector(<span class="s">'video'</span>),
+  onState: (s) =&gt; console.log(s?.mode),
+});
+<span class="k">await</span> engine.start();</code></pre>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== how ============================== -->
+<section class="band wrap" id="how">
+  <p class="eyebrow">Built for your web stack</p>
+  <h2>Real pointer events. No custom interaction layer.</h2>
+  <p class="lede">
+    Most webcam gesture libraries find an element with <code>elementFromPoint</code> and
+    dispatch a single <code>click</code>. That covers buttons and links and nothing else.
+    AirCursor synthesizes what a real pointing device produces, so behaviour that depends
+    on the <em>sequence</em> works — including in Radix, MUI and every pointer-based drag
+    library, which listen on <code>pointerdown</code> rather than <code>click</code>.
+  </p>
+
+  <div class="scroller">
+    <table>
+      <thead><tr><th>Interaction</th><th>Events emitted</th></tr></thead>
+      <tbody>
+        <tr><td>Hover</td><td><code>pointerout</code> → <code>pointerleave</code> → <code>pointerover</code> → <code>pointerenter</code></td></tr>
+        <tr><td>Move</td><td><code>pointermove</code>, <code>mousemove</code></td></tr>
+        <tr><td>Click</td><td><code>pointerdown</code> → <code>mousedown</code> → <code>pointerup</code> → <code>mouseup</code> → <code>click</code></td></tr>
+        <tr><td>Right click</td><td><code>pointerdown{button:2}</code> → <code>pointerup</code> → <code>contextmenu</code></td></tr>
+        <tr><td>Drag</td><td><code>pointerdown</code> → <code>pointermove</code>… → <code>pointerup</code>, captured to the press target</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="two-col" style="margin-top: 64px;">
+    <div>
+      <h3 style="font-size: 22px;">Steady enough to aim with</h3>
+      <p class="lede" style="margin-top: 14px;">
+        Pointer position runs through a One Euro filter, which smooths hard when the hand
+        is still and barely at all when it moves fast. Gesture booleans use separate enter
+        and exit thresholds plus a hold window, so a hand resting on a threshold cannot
+        chatter and poses passing through on the way somewhere else do not fire.
+      </p>
+      <p class="lede">
+        Every threshold is measured in <strong>hand units</strong> — wrist to middle-finger
+        knuckle — so a gesture reads the same close to the camera or across the room.
+      </p>
+    </div>
+    <div>
+      <h3 style="font-size: 22px;">Smooth even when tracking stutters</h3>
+      <p class="lede" style="margin-top: 14px;">
+        Inference and actuation are separated. MediaPipe runs at whatever rate the CPU
+        allows and that rate fluctuates; scrolling, cursor movement and physics run on
+        <code>requestAnimationFrame</code> instead.
+      </p>
+      <p class="lede">
+        The field behind the hero is the same readout, not a separate scene — which is why
+        it does not fight the model for the frame.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================= limits ============================ -->
+<section class="band wrap" id="limits">
+  <p class="eyebrow">Known limits</p>
+  <h2>What a synthetic pointer cannot do.</h2>
+  <p class="lede">
+    These are properties of the browser platform, not gaps waiting to be filled. They are
+    listed here rather than discovered later.
+  </p>
+  <ul class="limits">
+    <li><strong>Double click is out of reach by hand.</strong> A click only registers once the pose has been held long enough not to be a thumb passing through, and two of those cannot fit inside the window a browser counts as a double click. Bind anything that would need one to a single click instead.</li>
+    <li><strong>No user activation.</strong> Synthetic events carry <code>isTrusted: false</code>, so anything gated behind a real gesture stays out of reach: clipboard reads, <code>requestFullscreen()</code>, <code>window.open()</code>. Clipboard writes generally succeed in Chrome, but not in Firefox or Safari.</li>
+    <li><strong>CSS <code>:hover</code> does not respond.</strong> Hover styling comes from the browser's own hit testing. JavaScript hover handlers fire correctly; <code>:hover</code> rules do not. AirCursor adds an <code>aircursor-hover</code> class to the element under the cursor, so style that alongside it.</li>
+    <li><strong>Native HTML5 drag-and-drop does not start.</strong> <code>draggable="true"</code> only responds to trusted input. Pointer-event based drag libraries work normally.</li>
+    <li><strong>The model is fetched from a CDN by default.</strong> Point <code>mediapipeBasePath</code> at a self-hosted copy for offline or kiosk installations.</li>
+  </ul>
+</section>
+
+<!-- ============================== cite ============================= -->
+<section class="band wrap" id="cite">
+  <p class="eyebrow">Citation</p>
+  <h2>Using it in something?</h2>
+  <p class="lede">
+    AirCursor is MIT licensed, so you are free to use it however you like. If it ends up
+    in a product, a paper or a project you publish, a citation is appreciated.
+  </p>
+<pre><code>@software{ishikawa2026aircursor,
+  author  = {Ishikawa, Ritsuki},
+  title   = {{AirCursor}: A Touchless Pointer for the Web},
+  year    = {2026},
+  version = {2.0.0},
+  url     = {https://github.com/ritsuki-i/AirCursor}
+}</code></pre>
+</section>
+
+</main>
+
+<footer class="wrap">
+  <div class="footrow">
+    <span>MIT © Ritsuki Ishikawa</span>
+    <span>
+      <a href="https://github.com/ritsuki-i/AirCursor">GitHub</a> ·
+      <a href="https://www.npmjs.com/package/air-cursor">npm</a> ·
+      <a href="https://github.com/ritsuki-i/AirCursor/blob/main/README.ja.md">日本語</a>
+    </span>
+  </div>
+</footer>
+
+<!-- overlays -->
+<div id="cursor" data-mode="idle" data-modifier="off" aria-hidden="true"></div>
+<div id="hud" hidden aria-hidden="true">
+  <span>mode <b id="hud-mode">—</b></span>
+  <span>render fps <b id="hud-fps">—</b></span>
+  <span>infer fps <b id="hud-infer">—</b></span>
+  <span>hands <b id="hud-hands">0</b></span>
+</div>
+<div id="preview" hidden aria-hidden="true">
+  <video id="camera" autoplay playsinline muted></video>
+  <canvas id="preview-skeleton" width="320" height="180"></canvas>
+</div>
+
+<script type="module" src="./assets/demo.js"></script>
+</body>
+</html>

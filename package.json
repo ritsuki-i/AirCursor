@@ -1,28 +1,98 @@
 {
   "name": "air-cursor",
-  "version": "1.3.2",
-  "description": "",
-  "main": "dist/AirCursor.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "babel src --out-dir dist",
-    "git": "git add . && git commit -m 'エラーの修正' && git push origin main",
-    "update": "npm run build && npm run git && npm publish"
+  "version": "2.0.0",
+  "description": "Touchless pointer for the web. Control any page with hand gestures from a webcam: hover, click, right click, double click, drag and scroll, delivered as real pointer events. React component plus a framework-agnostic engine.",
+  "keywords": [
+    "hand-tracking",
+    "gesture",
+    "gesture-control",
+    "touchless",
+    "kiosk",
+    "mediapipe",
+    "webcam",
+    "cursor",
+    "pointer",
+    "accessibility",
+    "react",
+    "computer-vision",
+    "handsfree",
+    "contactless",
+    "digital-signage"
+  ],
+  "homepage": "https://github.com/ritsuki-i/AirCursor#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ritsuki-i/AirCursor.git"
   },
-  "author": "",
-  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ritsuki-i/AirCursor/issues"
+  },
+  "license": "MIT",
+  "author": "Ritsuki Ishikawa",
+  "sideEffects": false,
+  "main": "dist/cjs/index.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js",
+      "default": "./dist/cjs/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "README.ja.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "clean": "rimraf dist",
+    "build:cjs": "cross-env BABEL_ENV=cjs babel src --out-dir dist/cjs --extensions .js",
+    "build:esm": "cross-env BABEL_ENV=esm babel src --out-dir dist/esm --extensions .js",
+    "build:types": "shx cp src/index.d.ts dist/index.d.ts",
+    "build:pkg": "node scripts/emit-esm-pkg.js",
+    "build": "npm run clean && npm run build:cjs && npm run build:esm && npm run build:types && npm run build:pkg",
+    "prepublishOnly": "npm run build",
+    "test": "node --test test/",
+    "pretest": "npm run build",
+    "build:site": "esbuild site/core-entry.js --bundle --format=esm --minify --target=es2020 --outfile=docs/assets/aircursor-core.js",
+    "label": "node -e \"console.log('http://127.0.0.1:8777/tools/labeler.html')\" && npx --yes http-server docs -p 8777 -c-1 --silent"
+  },
   "dependencies": {
     "@mediapipe/camera_utils": "^0.3.1675466862",
-    "@mediapipe/hands": "^0.4.16754692vel",
-    "prop-types": "^15.8.1",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "@mui/material": "^6.4.5"
+    "@mediapipe/drawing_utils": "^0.3.1675466124",
+    "@mediapipe/hands": "^0.4.1675469240",
+    "prop-types": "^15.8.1"
+  },
+  "peerDependencies": {
+    "react": ">=17.0.0",
+    "react-dom": ">=17.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": false
+    },
+    "react-dom": {
+      "optional": false
+    }
   },
   "devDependencies": {
     "@babel/cli": "^7.25.7",
     "@babel/core": "^7.25.8",
     "@babel/preset-env": "^7.25.8",
-    "@babel/preset-react": "^7.25.7"
+    "@babel/preset-react": "^7.25.7",
+    "cross-env": "^7.0.3",
+    "esbuild": "^0.24.2",
+    "jsdom": "^25.0.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "rimraf": "^5.0.10",
+    "shx": "^0.3.4"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }
