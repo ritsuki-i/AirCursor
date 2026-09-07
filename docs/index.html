@@ -168,7 +168,9 @@
   </div>
 </header>
 
-<div id="region-box" hidden><span id="region-hint"></span></div>
+<div id="region-box" hidden>
+  <span id="region-hint"></span>
+</div>
 
 <!-- The crop itself lands in the Region capture panel further down the page,
      which is nowhere near where the gesture is made. This reports the outcome
@@ -218,7 +220,7 @@
         <img src="./assets/gesture-region-spread.webp" alt="Right hand at the upper-right and left hand at the lower-left defining a green screenshot area">
       </figure>
       <h3><span class="lang-en">Select a screenshot area</span><span class="lang-ja">スクリーンショット範囲を選択</span></h3>
-      <p><span class="lang-en">Meet both pinches at one point, then spread to opposite corners. Open both hands to freeze the green area, then pinch once with each hand to capture it.</span><span class="lang-ja">両手のつまみを一点で合わせ、対角方向へ広げます。両手を開いて緑の範囲を固定し、左右それぞれでもう一度つまむとスクリーンショットを撮影します。</span></p>
+      <p><span class="lang-en">Meet both pinches at one point, then spread to opposite corners. Open both hands to freeze the green area, then pinch once with each hand to capture it. Hold both hands in fists to cancel.</span><span class="lang-ja">両手のつまみを一点で合わせ、対角方向へ広げます。両手を開いて緑の範囲を固定し、左右それぞれでもう一度つまむとスクリーンショットを撮影します。解除は両手をグーにして保持します。</span></p>
     </article>
 
     <article class="gesture-card">
@@ -282,7 +284,7 @@
 
     <div class="pad">
       <h3>Region capture</h3>
-      <p>Pinch with <em>both</em> hands to frame an area, open them, then tap once with each hand. The crop lands here, and the result is reported next to your hands.</p>
+      <p>Pinch with <em>both</em> hands to frame an area, open them, then tap once with each hand. Hold both hands in fists to cancel. The crop lands here, and the result is reported next to your hands.</p>
       <div id="shot-frame">
         <img id="shot-img" alt="The area you last framed with both hands" hidden>
         <span id="shot-placeholder">Nothing framed yet</span>
@@ -440,6 +442,7 @@
   <span>mode <b id="hud-mode">—</b></span>
   <span>render fps <b id="hud-fps">—</b></span>
   <span>infer fps <b id="hud-infer">—</b></span>
+  <span>infer ms <b id="hud-infer-ms">—</b></span>
   <span>hands <b id="hud-hands">0</b></span>
 </div>
 <div id="preview" hidden aria-hidden="true">

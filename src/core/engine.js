@@ -85,6 +85,16 @@ export const DEFAULT_OPTIONS = {
   pointer: {},
 };
 
+/**
+ * Leave roughly thirty percent of wall-clock time for paint and input when a cap is
+ * enabled. `inferenceFps` is only an upper bound: on a slower machine the
+ * engine must leave actual time for paint and input instead of chasing a rate
+ * that the machine cannot sustain.
+ */
+const MAX_INFERENCE_DUTY = 0.7;
+/** Visual catch-up time between landmark samples, in seconds. */
+const POINTER_FOLLOW_S = 0.02;
+
 export class AirCursorEngine {
   /**
    * @param {object} config
@@ -160,6 +170,8 @@ export class AirCursorEngine {
     this.wasPressed = false;
     this.wasGrabbing = false;
     this.contextMenuFired = false;
+    /** When both fists first became stable during a region selection. */
+    this.regionCancelStartedAt = null;
 
     /**
      * Inferences completed since construction. Exposed so an application can
@@ -168,6 +180,15 @@ export class AirCursorEngine {
      * the two a stutter is coming from.
      */
     this.inferenceCount = 0;
+    /** Smoothed end-to-end cost of one MediaPipe inference, in milliseconds. */
+    this.inferenceDurationMs = 0;
+
+    /**
+     * MediaPipe produces positions at its own cadence. Keep the filtered sample
+     * separate from the position rendered between samples so the cursor does
+     * not move in inference-sized steps.
+     */
+    this.visualPoint = null;
 
     this._onResults = this._onResults.bind(this);
     this._loop = this._loop.bind(this);
@@ -200,21 +221,36 @@ export class AirCursorEngine {
     const minIntervalMs = this.options.inferenceFps > 0
       ? 1000 / this.options.inferenceFps
       : 0;
-    let lastSentAt = 0;
+    let nextInferenceAt = 0;
     let inFlight = false;
 
     this.cameraInstance = new Camera(this.video, {
       onFrame: async () => {
         if (!this.running || !this.hands || inFlight) return;
         const now = performance.now();
-        if (now - lastSentAt < minIntervalMs) return;
-        lastSentAt = now;
+        if (now < nextInferenceAt) return;
+        const startedAt = now;
         inFlight = true;
         try {
           await this.hands.send({ image: this.video });
         } catch (error) {
           if (this.onError) this.onError(error);
         } finally {
+          const completedAt = performance.now();
+          const duration = Math.max(0, completedAt - startedAt);
+          this.inferenceDurationMs = this.inferenceDurationMs === 0
+            ? duration
+            : this.inferenceDurationMs + (duration - this.inferenceDurationMs) * 0.15;
+
+          // A fixed 30 fps cap is not enough when one inference itself takes
+          // 25-40 ms: the next frame is sent as soon as the previous one ends,
+          // leaving no budget for WebGL or layout. Back off until inference is
+          // at most seventy percent of elapsed time. `inferenceFps: 0` deliberately keeps
+          // its documented uncapped behaviour.
+          const adaptiveIntervalMs = minIntervalMs > 0
+            ? this.inferenceDurationMs / MAX_INFERENCE_DUTY
+            : 0;
+          nextInferenceAt = startedAt + Math.max(minIntervalMs, adaptiveIntervalMs);
           inFlight = false;
         }
       },
@@ -247,7 +283,17 @@ export class AirCursorEngine {
     this.recognizer.reset();
     this.pointerFilter.reset();
     this.latest = null;
+    this.visualPoint = null;
+    this.regionCancelStartedAt = null;
     if (this.cursorElement) this.cursorElement.style.opacity = '0';
+  }
+
+  /**
+   * Abandon a two-hand selection in progress. Returns false when there was no
+   * live rectangle to cancel.
+   */
+  cancelRegionSelection() {
+    return this.region.cancel();
   }
 
   // -------------------------------------------------------------- inference
@@ -260,7 +306,24 @@ export class AirCursorEngine {
       results.multiHandedness,
       now
     );
-    this.latest = { state, timestamp: now };
+    const landmarks = state.dominantLandmarks;
+    let point = null;
+    if (state.dominant && landmarks) {
+      const raw = landmarkToViewport(
+        midpoint(landmarks[LM.INDEX_TIP], landmarks[LM.MIDDLE_TIP]),
+        window.innerWidth,
+        window.innerHeight,
+        this.options.activeRegion
+      );
+      // Filter each camera sample exactly once. Filtering the same value again
+      // on every render frame makes it converge, stop, and then jump when the
+      // next inference arrives.
+      point = this.pointerFilter.filter(raw, now / 1000);
+    } else {
+      this.pointerFilter.reset();
+      this.visualPoint = null;
+    }
+    this.latest = { state, timestamp: now, point };
     this._drawPreview(results);
   }
 
@@ -332,20 +395,59 @@ export class AirCursorEngine {
     const latest = this.latest;
     const hand = latest && latest.state.dominant;
     const landmarks = latest && latest.state.dominantLandmarks;
+    const targetPoint = latest && latest.point;
 
     // Ahead of the early return, so a frozen rectangle still times out while
     // the hands are out of frame rather than waiting there for their return.
-    const region = this.options.regionSelectEnabled
+    let region = this.options.regionSelectEnabled
       ? this.region.update(
           landmarks || null,
           (latest && latest.state.offLandmarks) || null,
           nowMs
         )
       : null;
+    const bothFists = !!(
+      region &&
+      (region.phase === 'framing' || region.phase === 'pending') &&
+      hand && hand.fist &&
+      latest && latest.state.off && latest.state.off.fist
+    );
+    // Use inference time, not rAF time. Re-reading one stale fist result for
+    // 450ms must not masquerade as 450ms of observed holding when tracking is
+    // temporarily slow.
+    const fistObservedAt = latest && Number.isFinite(latest.timestamp)
+      ? latest.timestamp
+      : nowMs;
+    if (bothFists) {
+      if (this.regionCancelStartedAt === null) this.regionCancelStartedAt = fistObservedAt;
+      if (fistObservedAt - this.regionCancelStartedAt >= this.region.o.cancelFistHoldMs) {
+        if (this.region.cancel()) {
+          // Surface the cancellation for one rendered frame so the application
+          // can remove its rectangle and explain what the two fists did.
+          region = {
+            phase: 'cooldown',
+            rect: null,
+            awaitingConfirm: false,
+            halfConfirmed: false,
+            committed: null,
+            rejected: 'cancelled',
+          };
+        }
+        this.regionCancelStartedAt = null;
+      }
+    } else {
+      this.regionCancelStartedAt = null;
+    }
     if (region && region.committed) this._commitRegion(region.committed);
     const regionActive = !!(region && region.phase !== 'idle');
+    const twoHandsVisible = !!(latest && latest.state.offLandmarks);
+    // A dominant thumb/index pinch is also the grab-scroll pose. Reserve that
+    // pose as soon as a second hand is being tracked, before the region
+    // selector's filtering/hold window has had time to enter `framing`.
+    const scrollSuppressed = regionActive ||
+      (this.options.regionSelectEnabled && twoHandsVisible);
 
-    if (!hand || !landmarks) {
+    if (!hand || !landmarks || !targetPoint) {
       if (this.wasPressed) {
         this.pointer.cancel();
         this.wasPressed = false;
@@ -355,6 +457,7 @@ export class AirCursorEngine {
         this.wasGrabbing = false;
       }
       this.pointer.clear();
+      this.visualPoint = null;
       this._renderCursor(null, 'idle');
       this._emit(null);
       return;
@@ -363,16 +466,12 @@ export class AirCursorEngine {
     const width = window.innerWidth;
     const height = window.innerHeight;
 
-    // Pointer rides the index/middle midpoint: when the aim gesture is held
-    // those two fingertips coincide, so the position is continuous whether or
-    // not the gesture is active.
-    const raw = landmarkToViewport(
-      midpoint(landmarks[LM.INDEX_TIP], landmarks[LM.MIDDLE_TIP]),
-      width,
-      height,
-      this.options.activeRegion
-    );
-    const point = this.pointerFilter.filter(raw, nowMs / 1000);
+    if (!this.visualPoint) this.visualPoint = { ...targetPoint };
+    const visualDt = Math.max(0, Math.min(dt, 0.05));
+    const follow = 1 - Math.exp(-visualDt / POINTER_FOLLOW_S);
+    this.visualPoint.x += (targetPoint.x - this.visualPoint.x) * follow;
+    this.visualPoint.y += (targetPoint.y - this.visualPoint.y) * follow;
+    const point = this.visualPoint;
     const x = Math.max(0, Math.min(width - 1, point.x));
     const y = Math.max(0, Math.min(height - 1, point.y));
 
@@ -394,16 +493,16 @@ export class AirCursorEngine {
     // selection is confirmed on is already back to `idle` while both hands are
     // still pinched, so the gesture that captured the region went straight on
     // to scroll the page.
-    if (regionActive) {
-      if (this.wasPressed) {
+    if (scrollSuppressed) {
+      if (regionActive && this.wasPressed) {
         this.pointer.cancel();
         this.wasPressed = false;
       }
-      if (this.wasGrabbing) {
+      if (scrollSuppressed && this.wasGrabbing) {
         this.scroller.cancel();
         this.wasGrabbing = false;
       }
-      this.contextMenuFired = false;
+      if (regionActive) this.contextMenuFired = false;
     }
 
     // ---- press / release -------------------------------------------------
@@ -428,7 +527,7 @@ export class AirCursorEngine {
     }
 
     // ---- grab scroll -----------------------------------------------------
-    if (regionActive) {
+    if (scrollSuppressed) {
       // handled above
     } else if (hand.grabbing && !this.wasGrabbing) {
       this.scroller.begin({ x, y }, hitTest(x, y));
@@ -442,7 +541,7 @@ export class AirCursorEngine {
 
     const mode = regionActive
       ? 'region'
-      : hand.grabbing
+      : hand.grabbing && !scrollSuppressed
         ? 'grab'
         : this.wasPressed || this.contextMenuFired
           ? 'press'

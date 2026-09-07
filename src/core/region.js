@@ -74,6 +74,14 @@ export const DEFAULT_REGION_OPTIONS = {
   // it is believed. Running out mid-confirm was silent, and it dropped the user
   // straight back into a live pinch that the scroller then picked up.
   confirmMs: 6000,
+  // MediaPipe occasionally omits one of two visible hands for a few inference
+  // frames. Keep an in-progress selection intact through that short dropout;
+  // an intentional pinch release is still observed immediately because both
+  // hands remain present.
+  lostHandGraceMs: 350,
+  // Both fists are already filtered by the gesture recognizers. Holding them a
+  // little longer makes cancel intentional without making it laborious.
+  cancelFistHoldMs: 450,
   medianWindow: 3,
   // How many frames behind the hands the rectangle sits.
   //
@@ -139,6 +147,7 @@ export class RegionSelector {
     /** Previous frame's pinch state, so a pinch's *start* can be detected. */
     this.pinched = { a: false, b: false };
     this.deadline = 0;
+    this.lastBothHandsAt = -Infinity;
   }
 
   /**
@@ -147,6 +156,19 @@ export class RegionSelector {
    * @param {number} nowMs
    */
   update(handA, handB, nowMs) {
+    const bothVisible = !!handA && !!handB;
+    if (bothVisible) {
+      this.lastBothHandsAt = nowMs;
+    } else if (
+      (this.phase === 'framing' || this.phase === 'pending') &&
+      nowMs - this.lastBothHandsAt <= this.o.lostHandGraceMs
+    ) {
+      // Do not feed a missing sample into the filters: resetting either pinch
+      // here would turn one dropped detection into a real release/tap edge when
+      // the hand reappears.
+      return this._result();
+    }
+
     const a = this._hand('a', handA, nowMs);
     const b = this._hand('b', handB, nowMs);
     // A tap is a pinch that *starts*, not one that is held. Reading the edge
@@ -227,6 +249,10 @@ export class RegionSelector {
       if (neither) this._clear();
     }
 
+    return this._result(committed, rejected);
+  }
+
+  _result(committed = null, rejected = null) {
     return {
       phase: this.phase,
       /** Live while framing, frozen while pending, null otherwise. */
@@ -296,6 +322,18 @@ export class RegionSelector {
     this.phase = 'idle';
   }
 
+  /**
+   * Abandon a rectangle without letting the pose that made it leak into click
+   * or scroll. Cooldown deliberately lasts until both pinches have opened.
+   *
+   * @returns {boolean} true when an in-progress selection was cancelled
+   */
+  cancel() {
+    if (this.phase !== 'framing' && this.phase !== 'pending') return false;
+    this._enterCooldown();
+    return true;
+  }
+
   reset() {
     this._clear();
     this.pinched = { a: false, b: false };
@@ -303,5 +341,6 @@ export class RegionSelector {
     this.pinch.b.reset();
     this.smooth.a.reset();
     this.smooth.b.reset();
+    this.lastBothHandsAt = -Infinity;
   }
 }

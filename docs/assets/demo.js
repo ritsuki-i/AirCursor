@@ -22,10 +22,12 @@ if (!field.supported) document.body.classList.add('no-webgl');
 
 let lastFrame = performance.now();
 let fieldActive = true;
+let fieldRect = canvas.getBoundingClientRect();
 
 const hero = document.querySelector('.hero');
 function updateFieldVisibility() {
   const rect = hero.getBoundingClientRect();
+  fieldRect = canvas.getBoundingClientRect();
   const next = rect.bottom > 0 && rect.top < window.innerHeight;
   if (fieldActive && !next) field.setPointer(null);
   fieldActive = next;
@@ -43,15 +45,17 @@ let handInFrame = false;
 
 function pointerFromMouse(event) {
   if (handInFrame || !fieldActive) return;
-  const rect = canvas.getBoundingClientRect();
-  field.setPointer({ x: event.clientX - rect.left, y: event.clientY - rect.top });
+  field.setPointer({ x: event.clientX - fieldRect.left, y: event.clientY - fieldRect.top });
 }
 window.addEventListener('pointermove', pointerFromMouse, { passive: true });
 
 let resizeTimer = null;
 window.addEventListener('resize', () => {
   clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => field.resize(), 150);
+  resizeTimer = setTimeout(() => {
+    field.resize();
+    updateFieldVisibility();
+  }, 150);
 });
 
 // ------------------------------------------------------------ hand tracking
@@ -64,6 +68,7 @@ const els = {
   hudMode: document.getElementById('hud-mode'),
   hudFps: document.getElementById('hud-fps'),
   hudInfer: document.getElementById('hud-infer'),
+  hudInferMs: document.getElementById('hud-infer-ms'),
   hudHands: document.getElementById('hud-hands'),
   video: document.getElementById('camera'),
   cursor: document.getElementById('cursor'),
@@ -203,7 +208,7 @@ const pageTranslations = [
   ['#cite > .lede', 'AirCursorはMITライセンスで自由に利用できます。製品、論文、公開プロジェクトで使用する場合は、引用していただけると幸いです。'],
   ['#try .pad:nth-child(6) h3', '範囲キャプチャ'],
   ['#shot-save', 'PNGで保存'],
-  ['#try .pad:nth-child(6) p', '<em>両手</em>でつまんで範囲を囲み、手を開いて、両手でそれぞれ1回タップします。切り取られた画像がここに表示され、結果は手元にも通知されます。'],
+  ['#try .pad:nth-child(6) p', '<em>両手</em>でつまんで範囲を囲み、手を開いて、両手でそれぞれ1回タップします。解除するときは両手をグーにします。切り取られた画像がここに表示され、結果は手元にも通知されます。'],
   ['#shot-placeholder', 'まだ範囲を囲んでいません'],
   ['.stage-pointer .tutorial-title', 'ポインター'],
   ['.stage-click .tutorial-title', 'クリック'],
@@ -239,8 +244,8 @@ function applyLanguage() {
     element.innerHTML = currentLanguage === 'ja' ? japanese : element.dataset.englishHtml;
   }
   const hudLabels = currentLanguage === 'ja'
-    ? ['状態 ', '描画 fps ', '推論 fps ', '手 ']
-    : ['mode ', 'render fps ', 'infer fps ', 'hands '];
+    ? ['状態 ', '描画 fps ', '推論 fps ', '推論 ms ', '手 ']
+    : ['mode ', 'render fps ', 'infer fps ', 'infer ms ', 'hands '];
   els.hud.querySelectorAll(':scope > span').forEach((span, index) => {
     if (span.firstChild && span.firstChild.nodeType === Node.TEXT_NODE) {
       span.firstChild.nodeValue = hudLabels[index];
@@ -277,6 +282,11 @@ function setStatus(text, tone = 'info') {
   els.status.dataset.tone = tone;
 }
 
+function setText(node, value) {
+  const text = String(value);
+  if (node.textContent !== text) node.textContent = text;
+}
+
 async function startTracking() {
   if (running) return stopTracking();
 
@@ -288,6 +298,12 @@ async function startTracking() {
     video: els.video,
     previewCanvas: els.previewSkeleton,
     cursorElement: els.cursor,
+    // The hero already has a full-screen particle simulation. Use the light
+    // landmark model and a smaller upload here; gesture geometry does not need
+    // a high-resolution camera frame.
+    inferenceFps: 30,
+    hands: { modelComplexity: 0 },
+    camera: { width: 480, height: 360 },
     onState: applyEngineState,
     onRegionSelect: captureRegion,
     onError: () => setStatus('The camera could not be started. This page needs camera permission and an https connection.', 'error'),
@@ -352,14 +368,16 @@ function applyEngineState(state) {
     field.setAttractors(null);
     if (handInFrame) document.body.classList.remove('hand-live');
     handInFrame = false;
-    els.hudMode.textContent = currentLanguage === 'ja' ? '手を検出していません' : 'no hand';
-    els.hudHands.textContent = '0';
+    setText(els.hudMode, currentLanguage === 'ja' ? '手を検出していません' : 'no hand');
+    setText(els.hudHands, '0');
     previousMode = 'idle';
-    // The engine stops reporting a region once the hands are gone, so without
-    // this the last rectangle drawn stays on screen indefinitely -- looking
-    // like a selection that is still live when there is nothing left to
-    // confirm.
-    drawRegion(null);
+    // Keep the last rectangle visible while RegionSelector is deliberately
+    // riding through a short MediaPipe hand dropout. A missing dominant hand
+    // makes the engine emit null, but it must not make an in-progress screenshot
+    // appear to have been cancelled.
+    const selectionStillActive = engine &&
+      (engine.region.phase === 'framing' || engine.region.phase === 'pending');
+    if (!selectionStillActive) drawRegion(null);
     return;
   }
 
@@ -369,13 +387,12 @@ function applyEngineState(state) {
   const modeLabel = currentLanguage === 'ja'
     ? ({ idle: '待機', aim: 'ポインター', press: 'クリック', grab: 'スクロール', region: '範囲選択' }[state.mode] || state.mode)
     : state.mode;
-  els.hudMode.textContent = state.modifier
+  setText(els.hudMode, state.modifier
     ? `${modeLabel} + ${currentLanguage === 'ja' ? '修飾' : 'modifier'}`
-    : modeLabel;
-  els.hudHands.textContent = String(state.hands || 1);
+    : modeLabel);
+  setText(els.hudHands, state.hands || 1);
 
-  const rect = canvas.getBoundingClientRect();
-  const pointerPoint = { x: state.x - rect.left, y: state.y - rect.top };
+  const pointerPoint = { x: state.x - fieldRect.left, y: state.y - fieldRect.top };
   field.setPointer(pointerPoint);
   field.setAttractors(state.mode === 'aim' ? [pointerPoint] : null, 'aim');
 
@@ -390,10 +407,10 @@ function applyEngineState(state) {
 // --------------------------------------------------------- region selection
 
 const regionHints = {
-  framing: ['Open both hands to freeze', '両手を開いて確定'],
-  pending: ['Tap both hands once to capture', '両手で1回タップしてキャプチャ'],
-  half: ['Now the other hand', 'もう片方の手もタップ'],
-  waiting: ['Open both hands', '両手を開いてください'],
+  framing: ['Open to freeze · hold both fists to cancel', '両手を開いて固定・両手グーで解除'],
+  pending: ['Tap both hands to capture · fists to cancel', '両手タップで確定・両手グーで解除'],
+  half: ['Now the other hand · fists to cancel', 'もう片方もタップ・両手グーで解除'],
+  waiting: ['Open both hands · fists to cancel', '両手を開く・両手グーで解除'],
 };
 
 // Why a selection was thrown away. The rectangle vanishing on its own carries
@@ -402,6 +419,7 @@ const regionHints = {
 const regionRejections = {
   tooSmall: ['That area was too small — frame a wider one', '範囲が小さすぎます。もう少し広く囲んでください'],
   timeout: ['Selection cancelled — nothing was captured', '選択を取り消しました。キャプチャしていません'],
+  cancelled: ['Selection cancelled with both fists', '両手のグーで範囲選択を解除しました'],
 };
 
 /**
@@ -439,6 +457,20 @@ function drawRegion(region) {
       : region.awaitingConfirm ? 'pending' : 'waiting';
   els.regionHint.textContent = regionHints[key][currentLanguage === 'ja' ? 1 : 0];
 }
+
+function cancelRegionSelection() {
+  if (!engine || !engine.cancelRegionSelection()) return false;
+  drawRegion(null);
+  showRegionToast(
+    currentLanguage === 'ja' ? '範囲選択を解除しました' : 'Selection cancelled — nothing was captured',
+    null
+  );
+  return true;
+}
+
+window.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && cancelRegionSelection()) event.preventDefault();
+});
 
 // The crop lands in the Region capture panel, which is most of a page away from
 // wherever the gesture was made -- so on its own it is invisible feedback. This
@@ -656,8 +688,7 @@ function applyHand(now) {
 
 /** A click lets go of everything the hand had gathered. */
 function castRelease(x, y, strength) {
-  const rect = canvas.getBoundingClientRect();
-  field.release(x - rect.left, y - rect.top, strength);
+  field.release(x - fieldRect.left, y - fieldRect.top, strength);
 }
 
 function frame(now) {
@@ -678,6 +709,9 @@ function frame(now) {
       // number next to a low render one is the whole story of a stuttering
       // field, and the two averaged together hid exactly that.
       els.hudInfer.textContent = engine ? String(engine.inferenceCount - lastInferCount) : '—';
+      els.hudInferMs.textContent = engine && engine.inferenceDurationMs > 0
+        ? engine.inferenceDurationMs.toFixed(1)
+        : '—';
       if (engine) lastInferCount = engine.inferenceCount;
     }
     frames = 0;

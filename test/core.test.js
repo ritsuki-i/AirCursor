@@ -287,3 +287,96 @@ test('options that are actually passed still win', () => {
   assert.equal(engine.options.activeRegion.bottom, 0.4);
   assert.equal(engine.options.activeRegion.left, DEFAULT_ACTIVE_REGION.left);
 });
+
+test('seeing a second hand cancels grab scroll before region framing settles', () => {
+  const engine = new AirCursorEngine({ video: null });
+  let scrollCancels = 0;
+  let scrollBegins = 0;
+  engine.pointer = {
+    currentTarget: null,
+    move() {}, press() {}, release() {}, cancel() {}, clear() {}, contextMenu() {},
+  };
+  engine.scroller = {
+    begin() { scrollBegins++; },
+    update() {}, end() {}, tick() {},
+    cancel() { scrollCancels++; },
+  };
+  // The region recognizer has not served its median/hold window yet. The raw
+  // presence of the off hand must still reserve the pinch for region framing.
+  engine.region = {
+    update: () => ({ phase: 'idle', rect: null, committed: null, rejected: null }),
+    cancel: () => false,
+    reset() {},
+  };
+  engine.latest = {
+    timestamp: 1000,
+    point: { x: 50, y: 40 },
+    state: {
+      dominant: { grabbing: true, selecting: false, aiming: false },
+      dominantLandmarks: [{}],
+      offLandmarks: [{}],
+      modifier: false,
+    },
+  };
+  engine.wasGrabbing = true;
+
+  const previousWindow = global.window;
+  global.window = { innerWidth: 200, innerHeight: 120 };
+  try {
+    engine._step(1000, 1 / 60);
+  } finally {
+    global.window = previousWindow;
+  }
+
+  assert.equal(scrollCancels, 1, 'an in-flight scroll is cancelled without inertia');
+  assert.equal(scrollBegins, 0, 'no new scroll starts during the region hold window');
+  assert.equal(engine.wasGrabbing, false);
+});
+
+test('holding both fists cancels a live region without a pointer click', () => {
+  let cancelCalls = 0;
+  let emitted = null;
+  const engine = new AirCursorEngine({ video: null, onState: (state) => { emitted = state; } });
+  engine.pointer = {
+    move() {}, press() {}, release() {}, cancel() {}, clear() {}, contextMenu() {},
+  };
+  engine.scroller = {
+    begin() {}, update() {}, end() {}, cancel() {}, tick() {},
+  };
+  engine.region = {
+    o: { cancelFistHoldMs: 450 },
+    update: () => ({ phase: 'pending', rect: { left: 0, top: 0, width: 0.5, height: 0.5 }, committed: null, rejected: null }),
+    cancel: () => { cancelCalls++; return true; },
+    reset() {},
+  };
+  engine.latest = {
+    timestamp: 1000,
+    point: { x: 50, y: 40 },
+    state: {
+      dominant: { grabbing: false, selecting: false, aiming: false, fist: true },
+      dominantLandmarks: [{}],
+      off: { fist: true },
+      offLandmarks: [{}],
+      modifier: true,
+    },
+  };
+
+  const previousWindow = global.window;
+  global.window = { innerWidth: 200, innerHeight: 120 };
+  try {
+    engine._step(1000, 1 / 60);
+    engine._step(2000, 1 / 60);
+    assert.equal(cancelCalls, 0, 'one stale inference is not mistaken for a hold');
+    engine.latest.timestamp = 1449;
+    engine._step(1449, 1 / 60);
+    assert.equal(cancelCalls, 0, 'a short two-fist pose is not enough');
+    engine.latest.timestamp = 1450;
+    engine._step(1450, 1 / 60);
+  } finally {
+    global.window = previousWindow;
+  }
+
+  assert.equal(cancelCalls, 1);
+  assert.equal(emitted.region.rejected, 'cancelled');
+  assert.equal(emitted.region.rect, null);
+});

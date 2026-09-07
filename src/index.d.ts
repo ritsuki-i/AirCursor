@@ -151,7 +151,7 @@ export interface Region {
 export type RegionPhase = 'framing' | 'pending' | 'cooldown';
 
 /** Why a selection was thrown away instead of being reported. */
-export type RegionRejection = 'tooSmall' | 'timeout';
+export type RegionRejection = 'tooSmall' | 'timeout' | 'cancelled';
 
 export interface RegionState {
   /**
@@ -249,7 +249,7 @@ export interface AirCursorProps {
   thresholds?: ThresholdOptions;
   hands?: HandsOptions;
   camera?: CameraOptions;
-  onStart?: () => void;
+  onStart?: (engine: AirCursorEngine) => void;
   onStop?: () => void;
   onState?: (state: AirCursorState | null) => void;
   /**
@@ -280,12 +280,16 @@ export class AirCursorEngine {
    * what says whether a stutter is the tracker's or the page's.
    */
   readonly inferenceCount: number;
+  /** Smoothed end-to-end cost of one MediaPipe inference, in milliseconds. */
+  readonly inferenceDurationMs: number;
   constructor(config: EngineConfig);
   readonly pointer: VirtualPointer;
   readonly scroller: GrabScroller;
   readonly region: RegionSelector;
   start(): Promise<void>;
   stop(): void;
+  /** Cancel a live two-hand region selection. False when none is in progress. */
+  cancelRegionSelection(): boolean;
 }
 
 export const DEFAULT_OPTIONS: Record<string, unknown>;
@@ -330,6 +334,10 @@ export interface RegionOptions {
   tapWindowMs?: number;
   /** How long a frozen rectangle waits to be confirmed. Extended while a tap is under way. Default 6000 */
   confirmMs?: number;
+  /** Ignore a brief loss of either tracked hand during selection. Default 350 */
+  lostHandGraceMs?: number;
+  /** Hold both fists this long to cancel a live selection. Default 450 */
+  cancelFistHoldMs?: number;
   medianWindow?: number;
   /** How many frames behind the hands the rectangle sits, so that opening a pinch does not drag a corner. Default 3 */
   settleFrames?: number;
@@ -355,6 +363,8 @@ export class RegionSelector {
     committed: { left: number; top: number; width: number; height: number } | null;
     rejected: RegionRejection | null;
   };
+  /** Cancel framing/pending and hold cooldown until both hands open. */
+  cancel(): boolean;
   reset(): void;
 }
 

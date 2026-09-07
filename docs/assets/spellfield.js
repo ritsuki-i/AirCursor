@@ -24,16 +24,15 @@
 //   grab   (index + thumb)           the same, held tighter
 //   click  (index + middle + thumb)  the mass bursts
 //
-// Every particle remembers where it was taken from, and a burst throws it in
-// that direction — but nothing pulls it there. It is one action: the mass is
-// released, it coasts outward, drag brings it to rest, and wherever it stops is
-// simply where that dust now lives. An earlier version added a homing force
-// after the throw, which read as a second, uninvited motion.
+// A burst is one visible action: release, coast, stop. Long-term density is
+// repaired separately. The field occasionally takes an unnoticed surplus point
+// from a crowded area, places it in the emptiest area almost dark, and lets its
+// glow develop over several seconds. No light flies back and nothing pops.
 //
 // It stays red while it travels and cools to white as it settles.
 //
 // The hand can only hold CAPACITY particles. Move a full one and its trailing
-// edge is shed and heads home while fresh dust is taken up at the leading edge,
+// edge is shed and cools down while fresh dust is taken up at the leading edge,
 // which is what keeps the whole field circulating.
 //
 // After a click the field reloads: one second to scatter, one second dead, one
@@ -44,13 +43,19 @@ precision highp float;
 layout(location = 0) in vec2 a_pos;
 layout(location = 1) in float a_size;
 layout(location = 2) in vec3 a_color;
+layout(location = 3) in float a_appearance;
 uniform vec2 u_resolution;
 out vec3 v_color;
+out float v_appearance;
 void main() {
   vec2 clip = (a_pos / u_resolution) * 2.0 - 1.0;
   gl_Position = vec4(clip.x, -clip.y, 0.0, 1.0);
+  float reveal = smoothstep(0.0, 1.0, a_appearance);
+  // Keep the final halo footprint and fade only its luminance. Growing a tiny
+  // point into a light looked like a kernel popping into existence.
   gl_PointSize = a_size;
   v_color = a_color;
+  v_appearance = reveal;
 }`;
 
 // A gaussian rather than a clamped disc: a blob with no edge at all, so
@@ -58,11 +63,22 @@ void main() {
 const FRAG = `#version 300 es
 precision highp float;
 in vec3 v_color;
+in float v_appearance;
+uniform float u_exposure;
 out vec4 outColor;
 void main() {
   float d = length(gl_PointCoord - vec2(0.5)) * 2.0;
-  float a = exp(-d * d * 2.7);
-  outColor = vec4(v_color * a, a);
+  // A small bright body inside a much wider, dim halo. The explicit edge mask
+  // reaches zero before the point-sprite boundary; without it the Gaussian was
+  // still visibly bright where WebGL cut the square off, so each light read as
+  // a sharply outlined grain instead of illumination.
+  float core = exp(-d * d * 3.8);
+  float halo = exp(-d * d * 1.35);
+  float edge = 1.0 - smoothstep(0.72, 1.0, d);
+  float a = (core * 0.78 + halo * 0.22) * edge;
+  // Boost RGB only. Alpha still describes the current particle footprint, so
+  // this adds light without bringing temporal trails back.
+  outColor = vec4(v_color * a * u_exposure * v_appearance, a * v_appearance);
 }`;
 
 const QUAD_VERT = `#version 300 es
@@ -73,12 +89,6 @@ void main() {
   v_uv = a_quad * 0.5 + 0.5;
   gl_Position = vec4(a_quad, 0.0, 1.0);
 }`;
-
-const FADE_FRAG = `#version 300 es
-precision highp float;
-uniform float u_alpha;
-out vec4 outColor;
-void main() { outColor = vec4(0.0, 0.0, 0.0, u_alpha); }`;
 
 // Radiance. The compressed mass is not a glowing ball — light escaping a point
 // leaves along rays. These are generated, not drawn: the angular profile is a
@@ -95,6 +105,7 @@ uniform float u_radius;
 uniform float u_charge;
 uniform float u_time;
 uniform float u_burst;
+uniform float u_exposure;
 out vec4 outColor;
 
 float hash(float n) {
@@ -164,7 +175,7 @@ void main() {
   col = mix(col, vec3(1.0, 0.30, 0.28), 1.0 - smoothstep(0.16, 0.85, d));
   col = mix(col, vec3(1.0, 0.96, 0.90), 1.0 - smoothstep(0.008, 0.10, d));
 
-  outColor = vec4(col * i, i);
+  outColor = vec4(col * i * u_exposure, i);
 }`;
 
 // Bloom. Density alone gives a bright core with a gradient, but a bright core
@@ -249,6 +260,22 @@ const DEAD_S = 1.0;
 const REGATHER_S = 1.0;
 
 const MAX_ATTRACTORS = 3;
+/**
+ * The old temporal buffer retained 86% of the previous frame, making a still
+ * point roughly 1 / (1 - .86) = 7.1 times brighter after it settled. Clearing
+ * every frame removed the unwanted tails and that accidental exposure boost
+ * together. Restore most of the light instantaneously, with no old positions.
+ */
+const NO_TRAIL_EXPOSURE = 5.5;
+
+// Long-term density repair. A couple of surplus particles are recycled into the
+// emptiest coarse cell at a time, then revealed over several seconds. The low
+// cadence makes the work negligible and, more importantly, makes the repair
+// read as light gradually returning instead of particles popping into existence.
+const REBALANCE_CELL = 120;
+const REBALANCE_INTERVAL_S = 0.28;
+const REBALANCE_MOVES = 2;
+const APPEAR_S = 3.2;
 
 // --- giving ground ----------------------------------------------------------
 //
@@ -339,7 +366,9 @@ export class SpellField {
       alpha: true,
       antialias: false,
       premultipliedAlpha: true,
-      powerPreference: 'low-power',
+      // MediaPipe and this canvas compete for GPU time. Ask the browser not to
+      // put the full-screen particle renderer on a deliberately slower adapter.
+      powerPreference: 'high-performance',
     });
     if (!gl) return;
 
@@ -347,7 +376,6 @@ export class SpellField {
     try {
       this.pointProgram = link(gl, VERT, FRAG);
       this.quadProgram = link(gl, QUAD_VERT, QUAD_FRAG);
-      this.fadeProgram = link(gl, QUAD_VERT, FADE_FRAG);
       this.rayProgram = link(gl, QUAD_VERT, RAY_FRAG);
       this.brightProgram = link(gl, QUAD_VERT, BRIGHT_FRAG);
       this.blurProgram = link(gl, QUAD_VERT, BLUR_FRAG);
@@ -367,10 +395,9 @@ export class SpellField {
     this.held = new Float32Array(COUNT);
     /** Residual redness once a particle has left the mass. Cools to white. */
     this.heat = new Float32Array(COUNT);
-    /** Where this particle was taken from, and must go back to. */
-    this.homeX = new Float32Array(COUNT);
-    this.homeY = new Float32Array(COUNT);
-    /** Seconds left of the journey home. 0 means it is not travelling. */
+    /** 0..1 reveal for light recycled into a sparse part of the field. */
+    this.appearance = new Float32Array(COUNT);
+    /** Seconds left of capture cooldown. 0 means it may be gathered again. */
     this.returning = new Float32Array(COUNT);
     /** 1 while still flying outward from a burst. */
     this.bursting = new Float32Array(COUNT);
@@ -419,6 +446,13 @@ export class SpellField {
     this.shedCarry = 0;
     this.cellStart = new Int32Array(1);
     this.cellCount = new Int32Array(1);
+    /** Coarse all-particle grid used only by the slow density repair. */
+    this.rebalanceW = 1;
+    this.rebalanceH = 1;
+    this.rebalanceCount = new Uint16Array(1);
+    this.rebalancePending = new Uint16Array(1);
+    this.rebalanceClock = 0;
+    this.rebalanceFrom = 0;
 
     this.vao = this._makeVao();
 
@@ -437,15 +471,16 @@ export class SpellField {
     this.bloomTex = [gl.createTexture(), gl.createTexture()];
 
     this.uPointRes = gl.getUniformLocation(this.pointProgram, 'u_resolution');
+    this.uPointExposure = gl.getUniformLocation(this.pointProgram, 'u_exposure');
     this.uQuadTex = gl.getUniformLocation(this.quadProgram, 'u_tex');
     this.uQuadAlpha = gl.getUniformLocation(this.quadProgram, 'u_alpha');
-    this.uFadeAlpha = gl.getUniformLocation(this.fadeProgram, 'u_alpha');
     this.uRayRes = gl.getUniformLocation(this.rayProgram, 'u_resolution');
     this.uRayCenter = gl.getUniformLocation(this.rayProgram, 'u_center');
     this.uRayRadius = gl.getUniformLocation(this.rayProgram, 'u_radius');
     this.uRayCharge = gl.getUniformLocation(this.rayProgram, 'u_charge');
     this.uRayTime = gl.getUniformLocation(this.rayProgram, 'u_time');
     this.uRayBurst = gl.getUniformLocation(this.rayProgram, 'u_burst');
+    this.uRayExposure = gl.getUniformLocation(this.rayProgram, 'u_exposure');
     this.uBrightTex = gl.getUniformLocation(this.brightProgram, 'u_tex');
     this.uBrightThreshold = gl.getUniformLocation(this.brightProgram, 'u_threshold');
     this.uBlurTex = gl.getUniformLocation(this.blurProgram, 'u_tex');
@@ -495,6 +530,12 @@ export class SpellField {
     gl.enableVertexAttribArray(2);
     gl.vertexAttribPointer(2, 3, gl.FLOAT, false, 0, 0);
 
+    this.appearanceBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.appearanceBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, this.appearance, gl.DYNAMIC_DRAW);
+    gl.enableVertexAttribArray(3);
+    gl.vertexAttribPointer(3, 1, gl.FLOAT, false, 0, 0);
+
     gl.bindVertexArray(null);
     return vao;
   }
@@ -503,8 +544,7 @@ export class SpellField {
     for (let i = 0; i < COUNT; i++) {
       this.px[i] = Math.random() * this.width;
       this.py[i] = Math.random() * this.height;
-      this.homeX[i] = this.px[i];
-      this.homeY[i] = this.py[i];
+      this.appearance[i] = 1;
       this.vx[i] = (Math.random() - 0.5) * 3;
       this.vy[i] = (Math.random() - 0.5) * 3;
       this.seed[i] = Math.random();
@@ -521,6 +561,8 @@ export class SpellField {
     if (!this.supported) return;
     const gl = this.gl;
     const rect = this.canvas.getBoundingClientRect();
+    const oldWidth = this.width;
+    const oldHeight = this.height;
     // MediaPipe also uses the GPU. Capping render density avoids large Retina
     // canvases stealing frame time while remaining visually sharper than 1x.
     this.dpr = Math.min(window.devicePixelRatio || 1, 1.35);
@@ -528,6 +570,21 @@ export class SpellField {
     this.height = Math.max(1, Math.round(rect.height * this.dpr));
     this.canvas.width = this.width;
     this.canvas.height = this.height;
+
+    // Keep the visible field aligned across a resize or DPR change.
+    if (oldWidth > 0 && oldHeight > 0) {
+      const scaleX = this.width / oldWidth;
+      const scaleY = this.height / oldHeight;
+      for (let i = 0; i < COUNT; i++) {
+        this.px[i] *= scaleX;
+        this.py[i] *= scaleY;
+      }
+    }
+
+    this.rebalanceW = Math.max(3, Math.ceil(this.width / (REBALANCE_CELL * this.dpr)));
+    this.rebalanceH = Math.max(2, Math.ceil(this.height / (REBALANCE_CELL * this.dpr)));
+    this.rebalanceCount = new Uint16Array(this.rebalanceW * this.rebalanceH);
+    this.rebalancePending = new Uint16Array(this.rebalanceW * this.rebalanceH);
 
     // Neighbour grid, one cell per interaction radius.
     this.cell = H * this.dpr;
@@ -572,25 +629,34 @@ export class SpellField {
   setAttractors(points, mode = 'aim') {
     if (!this.supported) return;
     this.mode = points && points.length ? mode : 'idle';
-    this.attractors.length = 0;
-    if (!points) return;
-    for (let i = 0; i < Math.min(points.length, MAX_ATTRACTORS); i++) {
-      this.attractors.push({ x: points[i].x * this.dpr, y: points[i].y * this.dpr });
+    const count = points ? Math.min(points.length, MAX_ATTRACTORS) : 0;
+    for (let i = 0; i < count; i++) {
+      const x = points[i].x * this.dpr;
+      const y = points[i].y * this.dpr;
+      if (this.attractors[i]) {
+        this.attractors[i].x = x;
+        this.attractors[i].y = y;
+      } else {
+        this.attractors.push({ x, y });
+      }
     }
+    this.attractors.length = count;
   }
 
   /** A passive mouse influence: stirs loose dust but never captures it. */
   setPointer(point) {
     if (!this.supported) return;
-    this.pointer = point
-      ? { x: point.x * this.dpr, y: point.y * this.dpr }
-      : null;
+    if (!point) {
+      this.pointer = null;
+    } else if (this.pointer) {
+      this.pointer.x = point.x * this.dpr;
+      this.pointer.y = point.y * this.dpr;
+    } else {
+      this.pointer = { x: point.x * this.dpr, y: point.y * this.dpr };
+    }
   }
 
-  /**
-   * A click. The mass is thrown back toward the dust it was taken from, which
-   * is what returns the field to its resting state.
-   */
+  /** A click releases the gathered mass as one radial burst. */
   release(x, y, strength = 1) {
     if (!this.supported) return;
     const power = Math.min(1, Math.max(0, this.fill));
@@ -626,14 +692,126 @@ export class SpellField {
     }
   }
 
+  /**
+   * Repair only the large-scale distribution of loose dust. This is deliberately
+   * not a force: moving visible points toward a target makes the correction look
+   * like another burst in reverse. Instead, surplus points are recycled into an
+   * under-filled cell with zero light and revealed by `appearance` afterwards.
+   */
+  _rebalance(dt, active) {
+    if (this.time - this.releaseTime < SCATTER_S + DEAD_S + REGATHER_S) {
+      this.rebalanceClock = 0;
+      return;
+    }
+    this.rebalanceClock += dt;
+    if (this.rebalanceClock < REBALANCE_INTERVAL_S) return;
+    this.rebalanceClock %= REBALANCE_INTERVAL_S;
+
+    const counts = this.rebalanceCount;
+    const pending = this.rebalancePending;
+    counts.fill(0);
+    pending.fill(0);
+    const gridW = this.rebalanceW;
+    const gridH = this.rebalanceH;
+    const cellWidth = this.width / gridW;
+    const cellHeight = this.height / gridH;
+    let visible = 0;
+
+    for (let i = 0; i < active; i++) {
+      // Count a light as occupying its new cell even while it is fading in, or
+      // every pass would keep filling the same apparently empty cell.
+      if (this.bound[i] || this.returning[i] > 0) continue;
+      const x = this.px[i];
+      const y = this.py[i];
+      if (x < 0 || x >= this.width || y < 0 || y >= this.height) continue;
+      const cx = Math.min(gridW - 1, (x / cellWidth) | 0);
+      const cy = Math.min(gridH - 1, (y / cellHeight) | 0);
+      const cell = cy * gridW + cx;
+      counts[cell]++;
+      if (this.appearance[i] < 0.999) pending[cell]++;
+      visible++;
+    }
+
+    const cells = counts.length;
+    if (visible < cells * 2) return;
+    const average = visible / cells;
+
+    for (let move = 0; move < REBALANCE_MOVES; move++) {
+      // Never put a second replacement beside one that is still appearing.
+      // Several individually faded particles accumulating in one empty cell
+      // crossed the bloom threshold together and looked like a small burst.
+      let sparseCell = -1;
+      let crowdedCell = 0;
+      for (let c = 0; c < cells; c++) {
+        if (pending[c] === 0 && (sparseCell < 0 || counts[c] < counts[sparseCell])) {
+          sparseCell = c;
+        }
+        if (counts[c] > counts[crowdedCell]) crowdedCell = c;
+      }
+      if (sparseCell < 0) return;
+      // Leave ordinary random variation alone. Correction starts only when a
+      // visibly thin cell coexists with a clearly crowded one.
+      if (
+        counts[sparseCell] >= average * 0.72 ||
+        counts[crowdedCell] <= average * 1.28 ||
+        counts[crowdedCell] - counts[sparseCell] < 6
+      ) return;
+
+      let source = -1;
+      let crowdedFallback = -1;
+      for (let k = 0; k < active; k++) {
+        const i = (this.rebalanceFrom + k) % active;
+        if (this.bound[i] || this.returning[i] > 0 || this.appearance[i] < 0.999) continue;
+        const x = this.px[i];
+        const y = this.py[i];
+        if (x < 0 || x >= this.width || y < 0 || y >= this.height) {
+          source = i;
+          break;
+        }
+        const cx = Math.min(gridW - 1, (x / cellWidth) | 0);
+        const cy = Math.min(gridH - 1, (y / cellHeight) | 0);
+        if (cy * gridW + cx === crowdedCell) crowdedFallback = i;
+      }
+      if (source < 0) source = crowdedFallback;
+      if (source < 0) return;
+      this.rebalanceFrom = (source + 1) % active;
+
+      const targetX = sparseCell % gridW;
+      const targetY = (sparseCell / gridW) | 0;
+      // Keep away from cell borders so adjacent repairs do not visually merge.
+      this.px[source] = (targetX + 0.16 + Math.random() * 0.68) * cellWidth;
+      this.py[source] = (targetY + 0.16 + Math.random() * 0.68) * cellHeight;
+      // The replacement is born in place. Motion while it is still dim reads
+      // as something being fired into the gap instead of light developing.
+      this.vx[source] = 0;
+      this.vy[source] = 0;
+      this.held[source] = 0;
+      this.heat[source] = 0;
+      this.density[source] = 0;
+      this.bursting[source] = 0;
+      this.appearance[source] = 0;
+
+      // An offscreen source was not included in any cell. A crowded source was.
+      if (source === crowdedFallback) counts[crowdedCell]--;
+      counts[sparseCell]++;
+      pending[sparseCell]++;
+    }
+  }
+
   step(dt) {
     if (!this.supported) return;
     // Before the clamp below: the governor wants to know how long the frame
     // really took, which is exactly what the clamp is there to hide.
     this._governCount(dt * 1000);
-    const d = Math.min(dt, 1 / 20);
+    // A long MediaPipe task can make the next rAF 40-80 ms late. Advancing the
+    // fluid by that entire gap in one Euler step turns the gathered ball into a
+    // streak and can destabilise the neighbour forces. Slow simulation time on
+    // an overloaded frame instead; there was no intermediate paint to show.
+    const elapsed = Math.max(0, Math.min(dt, 0.1));
+    const d = Math.min(elapsed, 1 / 30);
     this.time += d;
     const active = this.active;
+    this._rebalance(d, active);
 
     const t = this.time;
     const dpr = this.dpr;
@@ -655,8 +833,7 @@ export class SpellField {
     const density = this.density;
     const returning = this.returning;
     const bursting = this.bursting;
-    const homeX = this.homeX;
-    const homeY = this.homeY;
+    const appearance = this.appearance;
     const order = this.order;
     const cellStart = this.cellStart;
     const cellCount = this.cellCount;
@@ -703,7 +880,10 @@ export class SpellField {
     // Absorption is rate limited, which is what sets the three seconds. It is
     // not a force constant, so the timing does not shift when the physics is
     // retuned.
-    this.absorbCarry += (this.capacity / FILL_S) * d * gate * (regathering ? 2.6 : 1);
+    // Rebuilding the light after a cast must use the same calm fill rate as the
+    // first gather. The old 2.6x reload made the replacement mass arrive as a
+    // second, smaller explosion immediately after the intentional burst.
+    this.absorbCarry += (this.capacity / FILL_S) * d * gate;
     let budget = Math.floor(this.absorbCarry);
     this.absorbCarry -= budget;
 
@@ -747,18 +927,19 @@ export class SpellField {
     for (let n = 0; n < active; n++) {
       const i = (start + n) % active;
       const s = seed[i];
+      const replenishing = appearance[i] < 0.999;
 
       // Ambient drift, slow: any motion a visitor notices should be motion
       // their own hand caused.
       const angle = Math.sin(px[i] * 0.0015 + t * 0.2 + s * 6.28) +
                     Math.cos(py[i] * 0.0013 - t * 0.16 + s * 3.14);
-      let ax = Math.cos(angle * 2.1) * 5 * motion;
-      let ay = Math.sin(angle * 2.1) * 5 * motion;
+      let ax = replenishing ? 0 : Math.cos(angle * 2.1) * 5 * motion;
+      let ay = replenishing ? 0 : Math.sin(angle * 2.1) * 5 * motion;
       let cursorLight = 0;
 
       // Before hand tracking starts, the mouse only ripples nearby ambient
       // dust. It cannot bind particles, charge a glow or trigger a release.
-      if (!bound[i] && pointer) {
+      if (!replenishing && !bound[i] && pointer) {
         const mdx = px[i] - pointer.x;
         const mdy = py[i] - pointer.y;
         // sqrt of the sum rather than Math.hypot: identical here (these are
@@ -878,7 +1059,7 @@ export class SpellField {
           density[i] += (neighbours - density[i]) * densityRate;
           }
         } else {
-          // Shed: the hand moved on. Head home, still warm.
+          // Shed: the hand moved on. Cool down before it can be gathered again.
           bound[i] = 0;
           held[i] = 0;
           returning[i] = RETURN_S;
@@ -888,11 +1069,10 @@ export class SpellField {
         room > 0 &&
         budget > 0 &&
         returning[i] === 0 &&
+        !replenishing &&
         nearest >= 0 &&
         nearestDist < reach
       ) {
-        homeX[i] = px[i];
-        homeY[i] = py[i];
         bound[i] = 1;
         room--;
         budget--;
@@ -902,8 +1082,7 @@ export class SpellField {
 
       // ---- the burst ---------------------------------------------------------
       if (release && boundBefore) {
-        // Thrown toward the place it came from, not merely let go. The whole
-        // mass flies outward along the paths it arrived by.
+        // A golden-angle spread fills the burst without visible radial bands.
         const angle = i * 2.399963 + (s - 0.5) * 0.12;
         const dirX = Math.cos(angle);
         const dirY = Math.sin(angle);
@@ -912,8 +1091,9 @@ export class SpellField {
         py[i] = release.y + dirY * startRadius;
         // All the pressure in the compressed mass is let go at once, so the
         // particle leaves at its highest speed and decelerates the whole way
-        // out. The initial speed is chosen so that drag alone carries it about
-        // as far as it came from — no correction is applied afterwards.
+        // out. The initial speed is chosen so that drag alone carries it well
+        // across the visible field. Density correction starts only after this
+        // cooldown, so it cannot bend the visible burst trajectory.
         // A blast occupies the whole radius, not only its outer shell. The
         // power curve leaves plenty of slow embers near the cast centre while
         // the high-seed tail still travels to the full explosion range.
@@ -941,7 +1121,9 @@ export class SpellField {
       // No force here. `returning` is only a cooldown that keeps a particle
       // from being picked straight back up while it is still flying; drag alone
       // decides where it stops.
+      let finishedBurst = false;
       if (returning[i] > 0) {
+        const wasBursting = bursting[i] > 0;
         returning[i] = Math.max(0, returning[i] - d);
         // Fade the cast state continuously instead of dropping from 1 to 0 at
         // the end. Size, brightness, red heat and drag can now all finish the
@@ -949,6 +1131,7 @@ export class SpellField {
         if (bursting[i] > 0) {
           bursting[i] = returning[i] / RETURN_S;
         }
+        finishedBurst = wasBursting && returning[i] === 0;
       }
 
       // Still burning while it flies; it cools to white only once the throw is
@@ -959,8 +1142,11 @@ export class SpellField {
         heat[i] *= Math.max(0, 1 - d * cool);
       }
       if (!inMass) density[i] *= Math.max(0, 1 - d * 4);
+      if (appearance[i] < 1) {
+        appearance[i] = Math.min(1, appearance[i] + d / APPEAR_S);
+      }
 
-      const damp = arriving
+      const dampPerFrame = arriving
         ? 0.965
         : inMass
           ? 0.86
@@ -970,8 +1156,11 @@ export class SpellField {
             : returning[i] > 0
               ? 0.9
               : 0.935;
-      vx[i] = (vx[i] + ax * d) * damp;
-      vy[i] = (vy[i] + ay * d) * damp;
+      // The original values are per 60 Hz frame. Make them time-correct so a
+      // missed frame does not also remove most of the damping for that period.
+      const damp = Math.pow(dampPerFrame, d * 60);
+      vx[i] = replenishing ? 0 : (vx[i] + ax * d) * damp;
+      vy[i] = replenishing ? 0 : (vy[i] + ay * d) * damp;
 
       const speed = Math.sqrt(vx[i] * vx[i] + vy[i] * vy[i]);
       const cap = bursting[i] > 0 ? 225 : 44;
@@ -982,15 +1171,37 @@ export class SpellField {
       px[i] += vx[i] * d * 34;
       py[i] += vy[i] * d * 34;
 
-      // Loose dust wraps, so the field reads as continuing past the edges. A
-      // particle on its way home must not, or it would never arrive.
+      // Loose dust wraps with its overshoot intact. Large-scale empty areas are
+      // repaired by _rebalance(), through light fading in rather than motion.
       if (returning[i] === 0 && !bound[i]) {
-        if (px[i] < -20) px[i] = width + 20;
-        else if (px[i] > width + 20) px[i] = -20;
-        if (py[i] < -20) py[i] = height + 20;
-        else if (py[i] > height + 20) py[i] = -20;
-        homeX[i] = px[i];
-        homeY[i] = py[i];
+        const margin = 20;
+        const spanX = width + margin * 2;
+        const spanY = height + margin * 2;
+        let wrapped = false;
+        // Preserve overshoot when wrapping. Assigning every escaped particle to
+        // exactly -20 or width+20 made repeated bursts accumulate as edge lines.
+        if (px[i] < -margin || px[i] > width + margin) {
+          px[i] = ((px[i] + margin) % spanX + spanX) % spanX - margin;
+          wrapped = true;
+        }
+        if (py[i] < -margin || py[i] > height + margin) {
+          py[i] = ((py[i] + margin) % spanY + spanY) % spanY - margin;
+          wrapped = true;
+        }
+
+        // A cast particle that finished offscreen is now replacement light,
+        // not a continuation of the burst. Previously hundreds of these
+        // wrapped on the same frame with their remaining velocity and appeared
+        // to explode back into the empty field. Reintroduce them dark and still
+        // so only the gradual appearance ramp is visible.
+        if (wrapped && finishedBurst) {
+          appearance[i] = 0;
+          vx[i] = 0;
+          vy[i] = 0;
+          heat[i] = 0;
+          density[i] = 0;
+          bursting[i] = 0;
+        }
       }
 
       // ---- appearance ---------------------------------------------------------
@@ -1010,7 +1221,9 @@ export class SpellField {
       // Captured particles are wide and soft. They are not meant to be seen
       // individually: overlapping, they add up into one body of light.
       const burstGlow = bursting[i] * heat[i];
-      sizes[i] = (1.8 + s * 1.0 + warm * 10.0 + ember * 1.1 + burstGlow * 4.5 + cursorLight * 4.0) * dpr;
+      // Even ambient dust needs enough physical pixels for a radial gradient.
+      // A 2px sprite can only look like a hard dot regardless of the shader.
+      sizes[i] = (3.4 + s * 1.8 + warm * 11.5 + ember * 2.0 + burstGlow * 5.0 + cursorLight * 5.0) * dpr;
 
       // A merged particle contributes very little on its own. Hundreds of them
       // overlapping is what produces the light, so the saturated core stays
@@ -1057,11 +1270,35 @@ export class SpellField {
     // Three times quicker to give ground than to take it back. Frames are
     // being missed while it gives, and nobody should watch the field refill.
     if (this.frameCost > SHRINK_ABOVE_MS) {
-      this.relief = Math.min(1, this.relief + 0.012);
+      // Reach the low-cost configuration in roughly 1.3 seconds regardless of
+      // whether the struggling device is presenting 20, 30 or 60 fps.
+      this.relief = Math.min(1, this.relief + frameMs * 0.00075);
     } else if (this.frameCost < GROW_BELOW_MS) {
-      this.relief = Math.max(0, this.relief - 0.004);
+      // Recover slowly so quality does not seesaw around the threshold.
+      this.relief = Math.max(0, this.relief - frameMs * 0.00008);
     }
-    this.active = Math.round(COUNT + (MIN_ACTIVE - COUNT) * this.relief);
+    const previousActive = this.active;
+    const nextActive = Math.round(COUNT + (MIN_ACTIVE - COUNT) * this.relief);
+
+    // Particles outside `active` are not stepped. If one is brought back after
+    // a cast, its last hot/bound velocity state must not reappear for one frame
+    // as a tiny burst. Bring it back as fresh loose dust, fully transparent;
+    // the normal `appearance` ramp reveals it gradually in place.
+    if (nextActive > previousActive) {
+      for (let i = previousActive; i < nextActive; i++) {
+        this.bound[i] = 0;
+        this.held[i] = 0;
+        this.heat[i] = 0;
+        this.returning[i] = 0;
+        this.bursting[i] = 0;
+        this.density[i] = 0;
+        this.vx[i] = 0;
+        this.vy[i] = 0;
+        this.appearance[i] = 0;
+      }
+    }
+
+    this.active = nextActive;
     this.capacity = Math.round(CAPACITY + (MIN_CAPACITY - CAPACITY) * this.relief);
   }
 
@@ -1072,16 +1309,19 @@ export class SpellField {
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
     gl.viewport(0, 0, this.width, this.height);
 
-    gl.enable(gl.BLEND);
-    gl.blendFunc(gl.ZERO, gl.SRC_ALPHA);
-    gl.useProgram(this.fadeProgram);
-    gl.uniform1f(this.uFadeAlpha, 0.86);
-    gl.bindVertexArray(this.quadVao);
-    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    // Start from a clean target every frame. Temporal accumulation made every
+    // ambient point grow a tail at high refresh rates and stretched a moving
+    // gathered mass into a line after a slow inference frame. Bloom below still
+    // supplies the soft glow without retaining any previous particle position.
+    gl.disable(gl.BLEND);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
 
+    gl.enable(gl.BLEND);
     gl.blendFunc(gl.ONE, gl.ONE);
     gl.useProgram(this.pointProgram);
     gl.uniform2f(this.uPointRes, this.width, this.height);
+    gl.uniform1f(this.uPointExposure, NO_TRAIL_EXPOSURE);
     gl.bindVertexArray(this.vao);
 
     gl.bindBuffer(gl.ARRAY_BUFFER, this.posBuffer);
@@ -1090,18 +1330,29 @@ export class SpellField {
     gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.sizes);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.colorBuffer);
     gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.colors);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.appearanceBuffer);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.appearance);
     gl.drawArrays(gl.POINTS, 0, this.active);
 
     // ---- radiance -----------------------------------------------------------
     // Drawn into the same buffer as the particles and before the bright pass,
     // so the bloom picks the rays up too and they bleed rather than sit flat.
-    if (this.fill > 0.02 && this.attractors.length > 0) {
+    // The gathered-light rays used to switch on wholesale at fill > .02.
+    // Because the shader is intentionally intense near its centre, crossing
+    // that threshold looked exactly like a second burst during replenishment.
+    // Ease the ray energy in from zero instead. This path is only the gathered
+    // light; the deliberate click burst below keeps its original envelope.
+    const gatheredCharge = Math.min(1, Math.max(0, this.fill));
+    const radianceReveal = smoothstep(0.01, 0.32, gatheredCharge);
+    const visibleCharge = gatheredCharge * radianceReveal;
+    if (visibleCharge > 0.0001 && this.attractors.length > 0) {
       gl.useProgram(this.rayProgram);
       gl.uniform2f(this.uRayRes, this.width, this.height);
       gl.uniform1f(this.uRayTime, this.time);
-      gl.uniform1f(this.uRayCharge, Math.min(1, this.fill) / Math.sqrt(this.attractors.length));
+      gl.uniform1f(this.uRayCharge, visibleCharge / Math.sqrt(this.attractors.length));
       gl.uniform1f(this.uRayRadius, Math.min(this.spread || 22, 28 * this.dpr));
       gl.uniform1f(this.uRayBurst, 0);
+      gl.uniform1f(this.uRayExposure, NO_TRAIL_EXPOSURE);
       gl.bindVertexArray(this.quadVao);
       for (const a of this.attractors) {
         gl.uniform2f(this.uRayCenter, a.x, a.y);
@@ -1124,6 +1375,7 @@ export class SpellField {
       gl.uniform1f(this.uRayCharge, Math.max(0.015, envelope * visiblePower));
       gl.uniform1f(this.uRayTime, this.time);
       gl.uniform1f(this.uRayBurst, phase);
+      gl.uniform1f(this.uRayExposure, NO_TRAIL_EXPOSURE);
       gl.bindVertexArray(this.quadVao);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     }

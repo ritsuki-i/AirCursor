@@ -50,6 +50,7 @@ In practice that means a `<div onClick>` responds, Radix and MUI menus open (the
 | Off hand closed into a fist | Modifier: the next click becomes a right click |
 | Both hands pinch at once | Frame a rectangle between the two pinch points |
 | …open both, then tap once with each | Confirm the rectangle |
+| During selection, hold both hands in fists | Cancel the rectangle |
 
 All thresholds are measured in **hand units** — the wrist to middle-finger-knuckle distance — so a gesture reads the same whether you are close to the camera or across the room, and regardless of window size.
 
@@ -93,22 +94,28 @@ else the page is drawing gets the remainder. Two defaults follow from that:
 
 | | | |
 | --- | --- | --- |
-| `inferenceFps` | 30 | Caps the tracking rate. The pointer is filtered and interpolated between inferences, so tracking faster is not visible — but the frames it skips are the only ones the page has to render in. 30 is also the rate the thresholds were fitted at. |
+| `inferenceFps` | 30 | Caps the tracking rate. The pointer is filtered and interpolated between inferences, so tracking faster is not visible — but the frames it skips are the only ones the page has to render in. On slower hardware the engine automatically backs off further so inference uses at most about 70% of wall-clock time. 30 is also the rate the thresholds were fitted at. |
 | `camera` | 640×480 | The landmark model works from a crop resampled to a couple of hundred pixels, so 720p cost most of the frame budget for nothing. |
 
-The engine is handed to `onStart`, and `engine.inferenceCount` counts completed
+The engine is handed to `onStart`, `engine.inferenceCount` counts completed
 inferences. Sample it once a second beside your own frame counter: the two share a thread and trade against each
 other, so seeing them apart is what says which of the two a stutter belongs to.
-Averaging them into one number hides exactly that.
+`engine.inferenceDurationMs` also exposes the smoothed cost of one inference.
+Averaging the rates into one number hides exactly that.
 
 ### Selecting a region with both hands
 
 Pinch with **both** hands to frame a rectangle between the two pinch points, open
 your hands to freeze it, then **tap once with each hand** to confirm. Waiting it
-out instead abandons it. Clicking and scrolling are suppressed for as long as a
-selection is in progress, because a one-hand pinch is itself the scroll gesture —
-and they stay suppressed until both hands open again, so the tap that confirmed a
-selection cannot go on to scroll the page.
+out instead abandons it. As soon as a second hand is tracked, grab scrolling is
+reserved for region selection rather than waiting for both filtered pinches to
+settle. Clicking and scrolling are suppressed for as long as a selection is in
+progress, and stay suppressed until both hands open again, so the tap that
+confirmed or cancelled a selection cannot go on to scroll the page.
+
+Hold **both hands in fists** for 450ms to cancel without changing from two hands
+to a one-hand pointer gesture. Framework-agnostic integrations can also call
+`engine.cancelRegionSelection()`; the demo keeps <kbd>Esc</kbd> as a keyboard fallback.
 
 The two confirming taps are matched on **when each one begins**, inside a 700ms
 window, rather than on both hands reading pinched on the same frame. Two hands

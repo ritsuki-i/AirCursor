@@ -301,11 +301,36 @@ test('the default coincidence window clears the pinch detector own lag', () => {
   assert.ok(DEFAULT_REGION_OPTIONS.confirmMs > DEFAULT_REGION_OPTIONS.tapWindowMs * 2);
 });
 
-test('losing a hand ends the framing rather than dragging the corner', () => {
+test('a brief dropped hand does not interrupt framing', () => {
   const sel = new RegionSelector();
   const clock = newClock();
   const framed = hold(sel, LEFT_CLOSED(), RIGHT_CLOSED(), 400, clock);
-  const lost = hold(sel, LEFT_CLOSED(), null, 200, clock);
+  const dropped = hold(sel, LEFT_CLOSED(), null, 200, clock);
+  assert.equal(dropped.phase, 'framing');
+  assert.deepEqual(dropped.rect, framed.rect);
+
+  const resumed = hold(sel, LEFT_CLOSED(), RIGHT_CLOSED(), 200, clock);
+  assert.equal(resumed.phase, 'framing', 'the same pinch continues after detection returns');
+});
+
+test('a brief dropped hand does not consume the confirmation gesture', () => {
+  const sel = new RegionSelector();
+  const clock = newClock();
+  hold(sel, LEFT_CLOSED(), RIGHT_CLOSED(), 400, clock);
+  const frozen = hold(sel, LEFT_OPEN(), RIGHT_OPEN(), 200, clock);
+  const dropped = hold(sel, LEFT_OPEN(), null, 200, clock);
+  assert.equal(dropped.phase, 'pending');
+  assert.deepEqual(dropped.rect, frozen.rect);
+
+  const confirmed = hold(sel, LEFT_CLOSED(), RIGHT_CLOSED(), 400, clock);
+  assert.ok(confirmed.committed, 'confirmation still works after detection returns');
+});
+
+test('losing a hand beyond the grace period freezes the last honest rectangle', () => {
+  const sel = new RegionSelector();
+  const clock = newClock();
+  const framed = hold(sel, LEFT_CLOSED(), RIGHT_CLOSED(), 400, clock);
+  const lost = hold(sel, LEFT_CLOSED(), null, DEFAULT_REGION_OPTIONS.lostHandGraceMs + 200, clock);
   assert.equal(lost.phase, 'pending');
   assert.deepEqual(lost.rect, framed.rect, 'the last rectangle the hand held is kept');
 });
@@ -335,4 +360,19 @@ test('reset clears a selection in progress', () => {
   sel.reset();
   const after = sel.update(LEFT_CLOSED(), RIGHT_CLOSED(), (clock.t += 33));
   assert.equal(after.phase, 'idle', 'the hold window has to be served again');
+});
+
+test('cancel abandons a live rectangle and waits for both hands to open', () => {
+  const sel = new RegionSelector();
+  const clock = newClock();
+  hold(sel, LEFT_CLOSED(), RIGHT_CLOSED(), 400, clock);
+
+  assert.equal(sel.cancel(), true);
+  assert.equal(sel.phase, 'cooldown');
+  assert.equal(sel.update(LEFT_CLOSED(), RIGHT_CLOSED(), (clock.t += 33)).rect, null);
+  assert.equal(sel.phase, 'cooldown', 'the cancelling pose must not restart selection');
+
+  hold(sel, LEFT_OPEN(), RIGHT_OPEN(), 100, clock);
+  assert.equal(sel.phase, 'idle');
+  assert.equal(sel.cancel(), false, 'nothing idle can be cancelled');
 });
