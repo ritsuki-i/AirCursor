@@ -2,35 +2,34 @@
 //
 // The page controller.
 //
-// One animation loop drives everything: the particle field, the synthetic
-// pointer and the scroller. MediaPipe runs on its own cadence and only ever
-// writes into `latest`; nothing in the render path waits on inference. That is
-// the same split the library itself uses, and it is why the visuals stay
-// smooth while the model is working.
+// The published npm engine owns recognition, cursor movement and event dispatch.
+// The galaxy owns a separate worker; this file only connects product UI.
 
-import { SpellField } from './spellfield.js';
-import { AirCursorEngine, cropRegion } from './aircursor-core.js';
+import { GalaxyField } from './galaxy.js';
+import { AirCursorEngine, cropRegion, DEMO_PACKAGE } from './aircursor-core.js';
 
 const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // ---------------------------------------------------------------- particles
 
 const canvas = document.getElementById('spellfield');
-const field = new SpellField(canvas, { reducedMotion: prefersReducedMotion });
+const field = new GalaxyField(canvas, { reducedMotion: prefersReducedMotion });
 if (!field.supported) document.body.classList.add('no-webgl');
 
 
 let lastFrame = performance.now();
 let fieldActive = true;
-let fieldRect = canvas.getBoundingClientRect();
+let fieldRect = canvas.parentElement.getBoundingClientRect();
 
 const hero = document.querySelector('.hero');
+hero.dataset.package = `${DEMO_PACKAGE.name}@${DEMO_PACKAGE.version}`;
 function updateFieldVisibility() {
   const rect = hero.getBoundingClientRect();
-  fieldRect = canvas.getBoundingClientRect();
+  fieldRect = rect;
   const next = rect.bottom > 0 && rect.top < window.innerHeight;
   if (fieldActive && !next) field.setPointer(null);
   fieldActive = next;
+  field.setVisible(next && !document.hidden);
 }
 window.addEventListener('scroll', updateFieldVisibility, { passive: true });
 updateFieldVisibility();
@@ -48,6 +47,18 @@ function pointerFromMouse(event) {
   field.setPointer({ x: event.clientX - fieldRect.left, y: event.clientY - fieldRect.top });
 }
 window.addEventListener('pointermove', pointerFromMouse, { passive: true });
+hero.addEventListener('pointerleave', () => { if (!handInFrame) field.setPointer(null); });
+document.getElementById('galaxy-pause').addEventListener('click', event => {
+  field.paused = !field.paused;
+  event.currentTarget.setAttribute('aria-pressed', String(field.paused));
+  updateMotionLabel();
+});
+window.matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', event => field.setReducedMotion(event.matches));
+document.addEventListener('visibilitychange', () => {
+  lastFrame = performance.now();
+  field.setVisible(fieldActive && !document.hidden);
+  if (document.hidden && engine) stopTracking();
+});
 
 let resizeTimer = null;
 window.addEventListener('resize', () => {
@@ -85,68 +96,8 @@ const els = {
   regionToastText: document.getElementById('region-toast-text'),
 };
 
-// MediaPipe hand topology, so the preview can be drawn without pulling in
-// @mediapipe/drawing_utils just for twenty line segments.
-const HAND_BONES = [
-  [0, 1], [1, 2], [2, 3], [3, 4],
-  [0, 5], [5, 6], [6, 7], [7, 8],
-  [5, 9], [9, 10], [10, 11], [11, 12],
-  [9, 13], [13, 14], [14, 15], [15, 16],
-  [13, 17], [17, 18], [18, 19], [19, 20],
-  [0, 17],
-];
-const FINGER_TIPS = [4, 8, 12, 16, 20];
-const previewCtx = els.previewSkeleton ? els.previewSkeleton.getContext('2d') : null;
-
-/**
- * Draw every detected hand over the camera preview.
- *
- * Without this the preview only proves the camera is on, not that the hand is
- * being found — so a visitor whose hand is out of frame or badly lit has no way
- * to tell why nothing is happening. The dominant hand is drawn in the page red
- * and the off hand, which acts as the modifier, in gold.
- */
-function drawPreviewSkeleton(results) {
-  if (!previewCtx) return;
-  const w = els.previewSkeleton.width;
-  const h = els.previewSkeleton.height;
-  previewCtx.clearRect(0, 0, w, h);
-
-  const hands = results.multiHandLandmarks;
-  if (!hands || !hands.length) return;
-
-  for (let i = 0; i < hands.length; i++) {
-    const lm = hands[i];
-    const handedness = results.multiHandedness && results.multiHandedness[i];
-    // MediaPipe reports handedness from the camera's point of view, so its
-    // "Right" is the user's left.
-    const isDominant = handedness ? handedness.label === 'Left' : i === 0;
-    const stroke = isDominant ? '#ff4257' : '#e9bd6a';
-
-    previewCtx.lineWidth = 2;
-    previewCtx.lineCap = 'round';
-    previewCtx.strokeStyle = stroke;
-    previewCtx.globalAlpha = 0.9;
-    previewCtx.beginPath();
-    for (const [a, b] of HAND_BONES) {
-      previewCtx.moveTo(lm[a].x * w, lm[a].y * h);
-      previewCtx.lineTo(lm[b].x * w, lm[b].y * h);
-    }
-    previewCtx.stroke();
-
-    previewCtx.globalAlpha = 1;
-    for (let k = 0; k < lm.length; k++) {
-      const tip = FINGER_TIPS.includes(k);
-      previewCtx.fillStyle = tip ? '#fff3e6' : stroke;
-      previewCtx.beginPath();
-      previewCtx.arc(lm[k].x * w, lm[k].y * h, tip ? 3.2 : 2, 0, Math.PI * 2);
-      previewCtx.fill();
-    }
-  }
-}
-
 const statusTranslations = new Map([
-  ['Move your mouse to stir the field. Press Start to hand it over to your hand.', 'マウスで粒子を揺らせます。開始を押すと手の操作へ切り替わります。'],
+  ['Move your mouse to stir the field. Enable hand tracking to take control.', 'マウスで粒子を揺らせます。ハンド操作を開始すると手の操作へ切り替わります。'],
   ['Loading the hand model…', 'ハンドモデルを読み込んでいます…'],
   ['The hand model could not be downloaded. Check your network and try again.', 'ハンドモデルを取得できませんでした。ネットワークを確認して再度お試しください。'],
   ['Waiting for camera permission…', 'カメラの許可を待っています…'],
@@ -187,14 +138,14 @@ const pageTranslations = [
   ['#how .two-col > div:nth-child(1) p:nth-of-type(2)', 'すべてのしきい値は、手首から中指の付け根までを基準とする<strong>手単位</strong>で計測します。カメラとの距離が変わっても同じジェスチャーとして認識されます。'],
   ['#how .two-col > div:nth-child(2) h3', '追跡が不安定でも滑らかに'],
   ['#how .two-col > div:nth-child(2) p:nth-of-type(1)', '推論と操作処理は分離されています。MediaPipeの処理速度が変動しても、スクロール、カーソル移動、物理演算は <code>requestAnimationFrame</code> で滑らかに動作します。'],
-  ['#how .two-col > div:nth-child(2) p:nth-of-type(2)', 'ヒーロー背景の粒子も同じ描画ループを使うため、ハンドモデルの処理を妨げません。'],
+  ['#how .two-col > div:nth-child(2) p:nth-of-type(2)', '対応ブラウザでは背景の粒子をWorkerで描画し、カメラ動作中は描画負荷を抑えて操作へ処理時間を割り当てます。'],
   ['#gestures .eyebrow', 'ジェスチャー'], ['#gestures h2', '5つの操作。2つの手。'],
   ['#gestures thead th:nth-child(1)', 'ジェスチャー'], ['#gestures thead th:nth-child(2)', '操作'],
   ['#gestures tbody tr:nth-child(1) td:nth-child(1)', '人差し指と中指の先を合わせる'], ['#gestures tbody tr:nth-child(1) td:nth-child(2)', '手に合わせてポインターを移動'],
   ['#gestures tbody tr:nth-child(2) td:nth-child(1)', 'そのまま親指を合わせる'], ['#gestures tbody tr:nth-child(2) td:nth-child(2)', 'クリック。保持するとドラッグ'],
   ['#gestures tbody tr:nth-child(3) td:nth-child(1)', '他の指を開き、親指と人差し指をつまむ'], ['#gestures tbody tr:nth-child(3) td:nth-child(2)', 'ページをつかんでスクロール'],
   ['#gestures tbody tr:nth-child(4) td:nth-child(1)', '反対の手を握る'], ['#gestures tbody tr:nth-child(4) td:nth-child(2)', '次のクリックを右クリックへ変更'],
-  ['#install > .eyebrow', 'プロダクトへ導入'], ['#install > h2', 'わずか3行でリリース。'],
+  ['#install > .eyebrow', 'プロダクトへ導入'], ['#install > h2', 'ひとつの導入で、新しい操作。'],
   ['#install .two-col > div:nth-child(1) > .lede', 'コンポーネントが開始ボタン、同意手順、カメラプレビューを表示します。許可後は、既存ページを変更せず手で操作できます。'],
   ['#install .two-col > div:nth-child(2) > .lede', 'エンジンはReactに依存しないため、JavaScript、Vue、Svelteでも利用できます。独自の操作割り当てに使える各モジュールも個別に公開しています。'],
   ['#limits .eyebrow', '既知の制約'], ['#limits h2', '合成ポインターでできないこと。'],
@@ -208,7 +159,7 @@ const pageTranslations = [
   ['#cite > .lede', 'AirCursorはMITライセンスで自由に利用できます。製品、論文、公開プロジェクトで使用する場合は、引用していただけると幸いです。'],
   ['#try .pad:nth-child(6) h3', '範囲キャプチャ'],
   ['#shot-save', 'PNGで保存'],
-  ['#try .pad:nth-child(6) p', '<em>両手</em>でつまんで範囲を囲み、手を開いて、両手でそれぞれ1回タップします。解除するときは両手をグーにします。切り取られた画像がここに表示され、結果は手元にも通知されます。'],
+  ['#try .pad:nth-child(6) p', '<em>両手</em>でつまんで範囲を囲み、手を開いて、両手でそれぞれ1回タップします。確定せず待つと解除されます。切り取られた画像がここに表示され、結果は手元にも通知されます。'],
   ['#shot-placeholder', 'まだ範囲を囲んでいません'],
   ['.stage-pointer .tutorial-title', 'ポインター'],
   ['.stage-click .tutorial-title', 'クリック'],
@@ -224,8 +175,10 @@ function renderSpellList() {
   const labels = spellLabels[currentLanguage];
   spellList.innerHTML = labels.map((label, i) => `<li><span>${String(i + 1).padStart(2, '0')}</span>${label}</li>`).join('');
 }
-let currentLanguage = localStorage.getItem('aircursor:language') === 'ja' ? 'ja' : 'en';
-let currentStatus = 'Move your mouse to stir the field. Press Start to hand it over to your hand.';
+// English is the indexable default; remember only an explicit visitor choice.
+let currentLanguage = 'en';
+try { if (localStorage.getItem('aircursor:language') === 'ja') currentLanguage = 'ja'; } catch { /* Storage may be disabled. */ }
+let currentStatus = 'Move your mouse to stir the field. Enable hand tracking to take control.';
 
 function applyLanguage() {
   document.documentElement.lang = currentLanguage;
@@ -233,10 +186,11 @@ function applyLanguage() {
   els.language.setAttribute('aria-label', currentLanguage === 'en' ? '日本語に切り替える' : 'Switch to English');
   els.cast.textContent = running
     ? (currentLanguage === 'ja' ? '停止' : 'Stop')
-    : (currentLanguage === 'ja' ? '開始' : 'Start');
+    : (currentLanguage === 'ja' ? 'ハンド操作を開始' : 'Enable hand tracking');
   els.status.textContent = currentLanguage === 'ja'
     ? (statusTranslations.get(currentStatus) || currentStatus)
     : currentStatus;
+  if (document.getElementById('try-result').dataset.clicks) renderTrialResult();
   for (const [selector, japanese] of pageTranslations) {
     const element = document.querySelector(selector);
     if (!element) continue;
@@ -253,7 +207,12 @@ function applyLanguage() {
   });
   document.title = currentLanguage === 'ja'
     ? 'AirCursor — 触れずにWebを操る'
-    : 'AirCursor — touchless pointer for the web';
+    : 'AirCursor — Hand Tracking for JavaScript & React | Try & Install';
+  updateMotionLabel();
+  document.querySelectorAll('[data-alt-ja]').forEach(img => {
+    if (!img.dataset.altEn) img.dataset.altEn = img.alt;
+    img.alt = currentLanguage === 'ja' ? img.dataset.altJa : img.dataset.altEn;
+  });
   // Alt text is not innerHTML, so the table above cannot reach it. Left alone
   // it stayed English in Japanese, which is the one piece of the page only a
   // screen reader would ever have noticed.
@@ -261,15 +220,33 @@ function applyLanguage() {
     ? '両手で最後に囲んだ範囲'
     : 'The area you last framed with both hands';
   renderSpellList();
+  updateTryLabel();
 }
 
 els.language.addEventListener('click', () => {
   currentLanguage = currentLanguage === 'en' ? 'ja' : 'en';
-  localStorage.setItem('aircursor:language', currentLanguage);
+  try { localStorage.setItem('aircursor:language', currentLanguage); } catch { /* Language switching still works without storage. */ }
   applyLanguage();
 });
 
+function updateMotionLabel() {
+  document.getElementById('galaxy-pause').textContent = currentLanguage === 'ja'
+    ? (field.paused ? '再生' : '一時停止') : (field.paused ? 'Resume motion' : 'Pause motion');
+}
+
+document.getElementById('copy-citation').addEventListener('click', async () => {
+  const feedback = document.getElementById('citation-feedback');
+  try {
+    await navigator.clipboard.writeText(document.getElementById('citation').textContent);
+    trackConversion('citation_copy', 'cite');
+    feedback.textContent = currentLanguage === 'ja' ? 'コピーしました' : 'Copied';
+  } catch {
+    feedback.textContent = currentLanguage === 'ja' ? '上の引用を選択してコピーしてください' : 'Select and copy the citation above.';
+  }
+});
+
 let running = false;
+let starting = false;
 let engine = null;
 let previousMode = 'idle';
 let frames = 0;
@@ -288,82 +265,103 @@ function setText(node, value) {
 }
 
 async function startTracking() {
+  if (starting) return;
   if (running) return stopTracking();
-
+  starting = true;
   els.cast.disabled = true;
+  document.getElementById('try-camera').disabled = true;
   setStatus('Loading the hand model…');
   setStatus('Waiting for camera permission…');
 
-  engine = new AirCursorEngine({
+  const sessionEngine = new AirCursorEngine({
     video: els.video,
     previewCanvas: els.previewSkeleton,
     cursorElement: els.cursor,
     // The hero already has a full-screen particle simulation. Use the light
     // landmark model and a smaller upload here; gesture geometry does not need
     // a high-resolution camera frame.
-    inferenceFps: 30,
+    inferenceFps: 24,
+    mediapipeBasePath: 'https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240',
     hands: { modelComplexity: 0 },
     camera: { width: 480, height: 360 },
     onState: applyEngineState,
     onRegionSelect: captureRegion,
     onError: () => setStatus('The camera could not be started. This page needs camera permission and an https connection.', 'error'),
   });
+  engine = sessionEngine;
 
   try {
-    await engine.start();
+    await sessionEngine.start();
+    if (engine !== sessionEngine || document.hidden) { sessionEngine.stop(); return; }
     running = true;
+    field.setTracking(true);
+    trackConversion('demo_started');
   } catch (error) {
     running = false;
-    engine.stop();
+    sessionEngine.stop();
+    if (engine !== sessionEngine) return;
     engine = null;
+    starting = false;
     els.cast.disabled = false;
+    document.getElementById('try-camera').disabled = false;
     setStatus('The camera could not be started. This page needs camera permission and an https connection.', 'error');
     return;
   }
 
   window.__airCursorDemo = engine;
+  starting = false;
   lastInferCount = 0;
   // Camera permission and video initialization can resize the visual viewport.
   // Re-evaluate from real geometry and rebuild the canvas backing buffers.
   updateFieldVisibility();
   field.resize();
   els.cast.disabled = false;
+  document.getElementById('try-camera').disabled = false;
   els.cast.textContent = currentLanguage === 'ja' ? '停止' : 'Stop';
   els.hud.hidden = false;
   els.preview.hidden = false;
   document.body.classList.add('tracking');
   setStatus('Hold your index and middle fingers together to move the pointer.', 'ok');
+  updateTryLabel();
 }
 
 function stopTracking() {
   running = false;
+  starting = false;
+  els.cast.disabled = false;
+  document.getElementById('try-camera').disabled = false;
+  field.setTracking(false);
   handInFrame = false;
-  document.body.classList.remove('hand-live');
+  document.body.classList.remove('hand-live', 'hand-pressing-control');
   if (engine) engine.stop();
   engine = null;
   window.__airCursorDemo = null;
   previousMode = 'idle';
-  els.cast.textContent = currentLanguage === 'ja' ? '開始' : 'Start';
+  els.cast.textContent = currentLanguage === 'ja' ? 'ハンド操作を開始' : 'Enable hand tracking';
   els.hud.hidden = true;
   els.preview.hidden = true;
-  if (previewCtx) {
-    previewCtx.clearRect(0, 0, els.previewSkeleton.width, els.previewSkeleton.height);
-  }
+  els.previewSkeleton.getContext('2d')?.clearRect(0, 0, els.previewSkeleton.width, els.previewSkeleton.height);
   els.cursor.style.opacity = '0';
   els.regionBox.hidden = true;
   els.regionToast.hidden = true;
   field.setAttractors(null);
   document.body.classList.remove('tracking');
+  document.getElementById('gesture-feedback').textContent = currentLanguage === 'ja' ? 'カメラは停止しています。' : 'Camera is off.';
   setStatus('Stopped. The camera has been released.');
+  updateTryLabel();
 }
 
 applyLanguage();
 
 els.cast.addEventListener('click', startTracking);
+document.getElementById('try-camera').addEventListener('click', startTracking);
 
 // ------------------------------------------------------------------- loop
 
 function applyEngineState(state) {
+  // A Stop click can arrive inside the engine's current event dispatch.
+  // Ignore the last callback from that frame after the session is released.
+  if (!running) { els.cursor.style.opacity = '0'; return; }
   if (!state) {
     field.setAttractors(null);
     if (handInFrame) document.body.classList.remove('hand-live');
@@ -371,6 +369,7 @@ function applyEngineState(state) {
     setText(els.hudMode, currentLanguage === 'ja' ? '手を検出していません' : 'no hand');
     setText(els.hudHands, '0');
     previousMode = 'idle';
+    setText(document.getElementById('gesture-feedback'), currentLanguage === 'ja' ? '右手全体をカメラに映してください。' : 'Keep your whole right hand in the camera frame.');
     // Keep the last rectangle visible while RegionSelector is deliberately
     // riding through a short MediaPipe hand dropout. A missing dominant hand
     // makes the engine emit null, but it must not make an in-progress screenshot
@@ -394,11 +393,20 @@ function applyEngineState(state) {
 
   const pointerPoint = { x: state.x - fieldRect.left, y: state.y - fieldRect.top };
   field.setPointer(pointerPoint);
+  const target = engine?.pointer.currentTarget;
+  const overControl = target?.closest('a, button, input, select, textarea, [role=button], .target, #t-drag');
+  // The galaxy follows the same pointer everywhere, including over controls.
+  // AirCursor still owns hit testing and dispatches the control's real events.
   field.setAttractors(state.mode === 'aim' ? [pointerPoint] : null, 'aim');
+  const isPressingControl = state.mode === 'press' && !!overControl;
+  document.body.classList.toggle('hand-pressing-control', isPressingControl);
+  setText(document.getElementById('gesture-feedback'), currentLanguage === 'ja'
+    ? (state.mode === 'press' ? '親指を離すとクリック。保持して動かすとドラッグ。' : '人差し指と中指を合わせて移動。親指を合わせて、離すとクリック。')
+    : (state.mode === 'press' ? 'Release your thumb to click. Keep holding to drag.' : 'Point with two fingertips together. Bring in your thumb, then release to click.'));
 
   drawRegion(state.region);
 
-  if (state.mode === 'press' && previousMode !== 'press') {
+  if (state.mode === 'press' && previousMode === 'aim') {
     castRelease(state.x, state.y, state.modifier ? 1.35 : 1);
   }
   previousMode = state.mode;
@@ -407,10 +415,10 @@ function applyEngineState(state) {
 // --------------------------------------------------------- region selection
 
 const regionHints = {
-  framing: ['Open to freeze · hold both fists to cancel', '両手を開いて固定・両手グーで解除'],
-  pending: ['Tap both hands to capture · fists to cancel', '両手タップで確定・両手グーで解除'],
-  half: ['Now the other hand · fists to cancel', 'もう片方もタップ・両手グーで解除'],
-  waiting: ['Open both hands · fists to cancel', '両手を開く・両手グーで解除'],
+  framing: ['Open both hands to freeze', '両手を開いて固定'],
+  pending: ['Tap each hand to capture · wait to cancel', '左右でタップして確定・待つと解除'],
+  half: ['Now tap with the other hand', 'もう片方もタップ'],
+  waiting: ['Open both hands', '両手を開く'],
 };
 
 // Why a selection was thrown away. The rectangle vanishing on its own carries
@@ -459,7 +467,7 @@ function drawRegion(region) {
 }
 
 function cancelRegionSelection() {
-  if (!engine || !engine.cancelRegionSelection()) return false;
+  if (!engine || typeof engine.cancelRegionSelection !== 'function' || !engine.cancelRegionSelection()) return false;
   drawRegion(null);
   showRegionToast(
     currentLanguage === 'ja' ? '範囲選択を解除しました' : 'Selection cancelled — nothing was captured',
@@ -575,117 +583,6 @@ async function captureRegion(rect) {
   }
 }
 
-function applyHand(now) {
-  const state = latest;
-  const hand = state && state.dominant;
-  const landmarks = state && state.dominantLandmarks;
-
-  if (!hand || !landmarks) {
-    if (wasPressed) { pointer.cancel(); wasPressed = false; }
-    if (wasGrabbing) { scroller.end(); wasGrabbing = false; }
-    pointer.clear();
-    field.setAttractors(null);
-    targetPoint = null;
-    visualPoint = null;
-    lastVisualTime = null;
-    smoother.reset();
-    els.cursor.style.opacity = '0';
-    els.hudMode.textContent = currentLanguage === 'ja' ? '手を検出していません' : 'no hand';
-    els.hudHands.textContent = '0';
-    // Hand out of frame: the mouse takes the field back, and the system
-    // cursor comes back with it.
-    if (handInFrame) document.body.classList.remove('hand-live');
-    handInFrame = false;
-    return;
-  }
-  if (!handInFrame) document.body.classList.add('hand-live');
-  handInFrame = true;
-
-  const raw = landmarkToViewport(
-    midpoint(landmarks[LM.INDEX_TIP], landmarks[LM.MIDDLE_TIP]),
-    window.innerWidth,
-    window.innerHeight
-  );
-  // Update the signal filter exactly once per camera inference. Re-filtering a
-  // repeated sample on every animation frame makes the next real sample look
-  // like a step, which is the source of the visible 24 fps judder.
-  if (handledRevision !== inferenceRevision || !targetPoint) {
-    targetPoint = smoother.filter(raw, inferenceTime || now / 1000);
-    handledRevision = inferenceRevision;
-  }
-  if (!visualPoint) visualPoint = { ...targetPoint };
-  const visualDt = lastVisualTime === null ? 1 / 60 : Math.min(0.05, (now - lastVisualTime) / 1000);
-  lastVisualTime = now;
-  const follow = 1 - Math.exp(-visualDt / 0.045);
-  visualPoint.x += (targetPoint.x - visualPoint.x) * follow;
-  visualPoint.y += (targetPoint.y - visualPoint.y) * follow;
-  const x = Math.max(0, Math.min(window.innerWidth - 1, visualPoint.x));
-  const y = Math.max(0, Math.min(window.innerHeight - 1, visualPoint.y));
-  const modifier = !!state.modifier;
-
-
-  pointer.move(x, y);
-
-  if (hand.selecting && !wasPressed) {
-    if (modifier) {
-      if (!contextFired) {
-        pointer.contextMenu();
-        contextFired = true;
-        castRelease(x, y, 1.35);
-      }
-    } else {
-      pointer.press(0);
-      wasPressed = true;
-      castRelease(x, y, 1);
-    }
-  } else if (!hand.selecting) {
-    if (wasPressed) { pointer.release(); wasPressed = false; }
-    contextFired = false;
-  }
-
-  if (hand.grabbing && !wasGrabbing) {
-    scroller.begin({ x, y }, hitTest(x, y));
-    wasGrabbing = true;
-  } else if (hand.grabbing) {
-    scroller.update({ x, y });
-  } else if (wasGrabbing) {
-    scroller.end();
-    wasGrabbing = false;
-  }
-
-  const mode = hand.grabbing ? 'grab' : wasPressed ? 'press' : hand.aiming ? 'aim' : 'idle';
-  els.cursor.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%)`;
-  els.cursor.style.opacity = '1';
-  els.cursor.dataset.mode = mode;
-  els.cursor.dataset.modifier = modifier ? 'on' : 'off';
-  const modeLabel = currentLanguage === 'ja'
-    ? ({ idle: '待機', aim: 'ポインター', press: 'クリック', grab: 'スクロール' }[mode] || mode)
-    : mode;
-  els.hudMode.textContent = modifier
-    ? `${modeLabel} + ${currentLanguage === 'ja' ? '修飾' : 'modifier'}`
-    : modeLabel;
-  els.hudHands.textContent = state.offLandmarks ? '2' : '1';
-
-  // Light belongs to the pointer itself, not to the individual fingertips.
-  // Gestures decide when it gathers; the single synthetic-pointer coordinate
-  // decides where.
-  const rect = canvas.getBoundingClientRect();
-  const pointerPoint = { x: x - rect.left, y: y - rect.top };
-  // A detected hand always stirs and lights nearby dust at the pointer. The
-  // gesture-specific attractor below is what additionally captures it.
-  field.setPointer(pointerPoint);
-
-  if (hand.grabbing) {
-    // Thumb + index is reserved for page grabbing/scrolling. It may stir the
-    // passive dust through setPointer(), but must never charge the light.
-    field.setAttractors(null);
-  } else if (hand.aiming) {
-    field.setAttractors([pointerPoint], 'aim');
-  } else {
-    field.setAttractors(null);
-  }
-}
-
 /** A click lets go of everything the hand had gathered. */
 function castRelease(x, y, strength) {
   field.release(x - fieldRect.left, y - fieldRect.top, strength);
@@ -695,7 +592,7 @@ function frame(now) {
   const dt = (now - lastFrame) / 1000;
   lastFrame = now;
 
-  if (fieldActive) {
+  if (fieldActive && !document.hidden) {
     field.step(dt);
     field.render();
   }
@@ -795,9 +692,55 @@ copyBtn.addEventListener('click', async () => {
   try {
     await navigator.clipboard.writeText('npm install air-cursor');
     copyBtn.dataset.state = 'copied';
+    trackConversion('install_copy', 'hero');
     setTimeout(() => { copyBtn.dataset.state = ''; }, 1600);
   } catch (error) {
     copyBtn.dataset.state = 'failed';
     setTimeout(() => { copyBtn.dataset.state = ''; }, 2400);
   }
+});
+
+// Only intent/actions are measured. Camera frames, landmarks and coordinates
+// are never included in analytics payloads.
+function trackConversion(name, placement = 'page') {
+  if (typeof window.gtag === 'function') window.gtag('event', name, { placement, package_version: DEMO_PACKAGE.version });
+}
+function updateTryLabel() {
+  const button = document.getElementById('try-camera');
+  button.textContent = currentLanguage === 'ja' ? (running ? 'カメラを停止' : '手で試す') : (running ? 'Stop camera' : 'Try with your hand');
+}
+document.querySelectorAll('a[href*="npmjs.com/package/air-cursor"]').forEach(link => {
+  link.addEventListener('click', () => trackConversion('npm_visit', link.closest('section')?.id || 'hero'));
+});
+document.querySelectorAll('[data-copy-install]').forEach(button => {
+  button.addEventListener('click', () => copyInstall(button));
+});
+async function copyInstall(button) {
+  try {
+    await navigator.clipboard.writeText('npm install air-cursor');
+    button.dataset.state = 'copied';
+    document.getElementById('install-feedback').textContent = currentLanguage === 'ja' ? 'インストールコマンドをコピーしました' : 'Install command copied';
+    trackConversion('install_copy', button.closest('section')?.id || 'hero');
+  } catch {
+    document.getElementById('install-feedback').textContent = currentLanguage === 'ja' ? 'npm install air-cursor を選択してコピーしてください' : 'Select and copy: npm install air-cursor';
+  }
+}
+
+let trialClicks = 0;
+let trialInput = 'mouse';
+function renderTrialResult() {
+  const result = document.getElementById('try-result');
+  result.textContent = currentLanguage === 'ja'
+    ? `${result.dataset.clicks} 回クリック成功。次はあなたのアプリで。`
+    : `${result.dataset.clicks} successful click${Number(result.dataset.clicks) === 1 ? '' : 's'}. Your app could be next.`;
+}
+document.getElementById('try-target').addEventListener('click', event => {
+  trialClicks++;
+  trialInput = event.isTrusted ? 'mouse' : 'hand';
+  const result = document.getElementById('try-result');
+  result.dataset.clicks = String(trialClicks);
+  result.dataset.input = trialInput;
+  renderTrialResult();
+  document.querySelector('.try-console').classList.add('has-clicked');
+  if (trialClicks === 1) trackConversion('demo_first_click', trialInput);
 });

@@ -9,6 +9,33 @@ const assert = require('node:assert/strict');
 const { OneEuroFilter } = require('../dist/cjs/core/oneEuro.js');
 const { AirCursorEngine, DEFAULT_OPTIONS } = require('../dist/cjs/core/engine.js');
 const { SchmittTrigger, HandGestureRecognizer } = require('../dist/cjs/core/gestures.js');
+
+test('stopping inside a click callback does not emit another cursor state', () => {
+  const engine = new AirCursorEngine({ video: null, regionSelectEnabled: false });
+  let emitted = 0;
+  engine.running = true;
+  engine.wasPressed = true;
+  engine.onState = () => emitted++;
+  engine.pointer = { move() {}, release() { engine.running = false; } };
+  engine.latest = { point: { x: 50, y: 40 }, state: { dominant: { selecting: false }, dominantLandmarks: [{}] } };
+  const previousWindow = global.window;
+  global.window = { innerWidth: 200, innerHeight: 120 };
+  try { engine._step(1000, 1 / 60); } finally { global.window = previousWindow; }
+  assert.equal(emitted, 0);
+});
+
+test('stopping during an engine frame schedules no extra frame or scroll', () => {
+  const engine = new AirCursorEngine({ video: null });
+  engine.running = true;
+  engine._step = () => { engine.running = false; };
+  let ticks = 0, frames = 0;
+  engine.scroller.tick = () => ticks++;
+  const previousRaf = global.requestAnimationFrame;
+  global.requestAnimationFrame = () => frames++;
+  try { engine._loop(); } finally { global.requestAnimationFrame = previousRaf; }
+  assert.equal(ticks, 0);
+  assert.equal(frames, 0);
+});
 const {
   handScale, normDistance, LM, userHandFrom, landmarkToViewport, DEFAULT_ACTIVE_REGION,
 } = require('../dist/cjs/core/landmarks.js');

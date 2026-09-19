@@ -1,0 +1,8 @@
+{
+  "name": "aircursor-production-demo",
+  "private": true,
+  "version": "1.0.0",
+  "dependencies": {
+    "air-cursor": "https://registry.npmjs.org/air-cursor/-/air-cursor-2.0.0.tgz"
+  }
+}

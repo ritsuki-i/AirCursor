@@ -17,21 +17,23 @@
   gtag('config', 'G-FTMER6YYQ5');
 </script>
 
-<title>AirCursor — touchless pointer for the web</title>
-<meta name="description" content="Add touchless gesture interaction to your web product. AirCursor turns webcam hand tracking into standards-based pointer events for kiosks, installations, demos, and web apps.">
+<title>AirCursor — Hand Tracking for JavaScript & React | Try & Install</title>
+<meta name="description" content="Try webcam hand tracking in your browser. Add gesture-controlled clicks, drag and scroll to JavaScript or React with air-cursor on npm. Open source, on-device processing.">
 <link rel="canonical" href="https://ritsuki-i.github.io/AirCursor/">
 
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://ritsuki-i.github.io/AirCursor/">
-<meta property="og:title" content="AirCursor — touchless pointer for the web">
-<meta property="og:description" content="Cast, don't click. Control any web page with your hand through a webcam — hover, click, right click, drag and scroll, as real pointer events.">
+<meta property="og:title" content="AirCursor — Hand Tracking for JavaScript & React">
+<meta property="og:description" content="Try it with your webcam. Install air-cursor from npm to add gesture-controlled clicks, drag and scroll to your own interface.">
 <meta property="og:site_name" content="AirCursor">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="ja_JP">
 <meta property="og:image" content="https://ritsuki-i.github.io/AirCursor/assets/aircursor-icon.png">
 <meta property="og:image:width" content="500">
 <meta property="og:image:height" content="500">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="AirCursor — touchless pointer for the web">
-<meta name="twitter:description" content="Cast, don't click. Hand gestures become real pointer events, so ordinary web UI just works.">
+<meta name="twitter:title" content="AirCursor — Hand Tracking for JavaScript & React">
+<meta name="twitter:description" content="Try webcam gesture control, then add it to your own interface with npm install air-cursor.">
 <meta name="twitter:image" content="https://ritsuki-i.github.io/AirCursor/assets/aircursor-icon.png">
 
 <link rel="icon" type="image/png" href="./assets/aircursor-icon.png">
@@ -46,13 +48,17 @@
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
-  "@type": "SoftwareApplication",
+  "@type": ["SoftwareApplication", "SoftwareSourceCode"],
   "name": "AirCursor",
   "applicationCategory": "DeveloperApplication",
   "operatingSystem": "Any browser with a webcam",
   "description": "A browser library that turns webcam hand tracking into a full pointer: hover, click, right click, drag and scroll, delivered as synthetic pointer events that ordinary web interfaces already understand.",
   "url": "https://ritsuki-i.github.io/AirCursor/",
   "codeRepository": "https://github.com/ritsuki-i/AirCursor",
+  "downloadUrl": "https://www.npmjs.com/package/air-cursor",
+  "installUrl": "https://www.npmjs.com/package/air-cursor",
+  "runtimePlatform": "Web browser",
+  "keywords": "hand tracking, gesture control, JavaScript, React, webcam, npm",
   "programmingLanguage": "JavaScript",
   "license": "https://opensource.org/licenses/MIT",
   "softwareVersion": "2.0.0",
@@ -63,55 +69,48 @@
 </script>
 </head>
 <body>
+<a class="skip-link" href="#main-content"><span class="lang-en">Skip to content</span><span class="lang-ja">本文へ移動</span></a>
 
 <header class="hero">
   <canvas id="spellfield" aria-hidden="true"></canvas>
   <div class="wrap">
     <div class="topbar">
       <span class="wordmark">AirCursor</span>
-      <nav class="toplinks">
+      <nav class="toplinks" aria-label="Main navigation">
+        <a href="#quickstart"><span class="lang-en">How to use</span><span class="lang-ja">使い方</span></a>
         <a href="#gestures"><span class="lang-en">Gestures</span><span class="lang-ja">操作</span></a>
-        <a href="#try"><span class="lang-en">Demo</span><span class="lang-ja">デモ</span></a>
-        <a href="#install"><span class="lang-en">Install</span><span class="lang-ja">導入</span></a>
         <a href="https://github.com/ritsuki-i/AirCursor">GitHub</a>
+        <a class="npm-cta header-cta" href="https://www.npmjs.com/package/air-cursor"><span class="lang-en">Get started</span><span class="lang-ja">npmで導入</span></a>
         <button id="language-toggle" class="language-toggle" type="button" aria-label="日本語に切り替える">日本語</button>
       </nav>
     </div>
 
     <div class="hero-content">
-    <p class="hero-audience"><span class="lang-en">FOR PRODUCT TEAMS · KIOSKS · INSTALLATIONS</span><span class="lang-ja">プロダクトチーム · キオスク · 展示体験向け</span></p>
     <div class="hero-copy">
-      <h1 class="lang-en"><span class="line"><em>Control</em>,</span><span class="line">without touch.</span></h1>
-      <h1 class="lang-ja"><span class="line">触れずに、</span><span class="line"><em>操る。</em></span></h1>
+      <h1><span class="line">Move <em>your hand.</em></span><span class="line">Move the Web.</span></h1>
+      <p class="hero-translation lang-ja" lang="ja">手を動かすだけで、Webはもっと自由になる。</p>
+      <span class="hero-product-note"><span class="lang-en">A touchless interaction library for JavaScript &amp; React.</span><span class="lang-ja">JavaScript・Reactのための非接触インタラクションライブラリ。</span></span>
     </div>
-    <p class="tagline lang-en">
-      Add touchless interaction to the web product you already ship. AirCursor turns
-      webcam hand tracking into <strong>standards-based pointer events</strong>, so kiosks,
-      installations, demos, and web apps gain gesture control without a custom interaction
-      layer. Processing stays on-device.
-    </p>
-    <p class="tagline lang-ja">既存のWebプロダクトに、非接触のインタラクションを追加。AirCursorは手の動きを標準的なポインターイベントへ変換し、キオスク、展示、デモ、Webアプリを独自の操作レイヤーなしでジェスチャー対応にします。映像処理は端末内で完結します。</p>
-
-    <div class="actions">
-      <button id="cast" class="btn" type="button"><span class="lang-en">Start</span><span class="lang-ja">開始</span></button>
-      <span class="install"><code>npm install air-cursor</code><button id="copy" type="button"><span class="lang-en">copy</span><span class="lang-ja">コピー</span></button></span>
-    </div>
-    <p class="status" id="status">Move your mouse to stir the field. Press Start to hand it over to your hand.</p>
+      <div class="hero-actions">
+        <button id="cast" class="btn" type="button"><span class="lang-en">Enable hand tracking</span><span class="lang-ja">ハンド操作を開始</span></button>
+      </div>
+      <div class="privacy-line"><span class="lang-en">Your camera · Your device · Your space</span><span class="lang-ja">映像は端末内だけで処理されます</span></div>
+      <p class="status" id="status" role="status">Move your mouse to stir the field. Enable hand tracking to take control.</p>
     </div>
 
     <aside class="gesture-guide" aria-label="Gesture guide">
       <svg viewBox="0 0 280 250" role="img" aria-label="Start, pointer and click gesture animation">
         <defs>
           <linearGradient id="mouse-metal" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stop-color="#5b421b" stop-opacity=".78"/>
-            <stop offset=".48" stop-color="#1a1006" stop-opacity=".9"/>
-            <stop offset="1" stop-color="#8f6827" stop-opacity=".62"/>
+            <stop offset="0" stop-color="#425878" stop-opacity=".78"/>
+            <stop offset=".48" stop-color="#101929" stop-opacity=".9"/>
+            <stop offset="1" stop-color="#9786ba" stop-opacity=".62"/>
           </linearGradient>
           <radialGradient id="pointer-light">
             <stop offset="0" stop-color="#fff8e8"/>
-            <stop offset=".16" stop-color="#ff7584"/>
-            <stop offset=".5" stop-color="#ff1839" stop-opacity=".72"/>
-            <stop offset="1" stop-color="#b21230" stop-opacity="0"/>
+            <stop offset=".16" stop-color="#a9dfff"/>
+            <stop offset=".5" stop-color="#8b87ff" stop-opacity=".72"/>
+            <stop offset="1" stop-color="#775bd9" stop-opacity="0"/>
           </radialGradient>
         </defs>
         <g class="tutorial-stage stage-cast">
@@ -165,8 +164,21 @@
 
       </svg>
     </aside>
+    <div class="hero-foot">
+      <a href="#quickstart"><span class="lang-en">SCROLL TO EXPLORE ↓</span><span class="lang-ja">使い方を見る ↓</span></a>
+      <div class="galaxy-controls">
+        <button id="galaxy-pause" type="button" aria-pressed="false">Pause motion</button>
+      </div>
+    </div>
   </div>
 </header>
+
+<div class="package-strip" aria-label="Package links">
+  <span class="package-strip-proof"><span class="release-dot" aria-hidden="true"></span><span class="lang-en">LIVE DEMO · PUBLISHED PACKAGE</span><span class="lang-ja">公開npmパッケージで動作中</span></span>
+  <span class="install"><code>npm install air-cursor</code><button id="copy" type="button"><span class="lang-en">copy</span><span class="lang-ja">コピー</span></button></span>
+  <a href="https://www.npmjs.com/package/air-cursor/v/2.0.0">air-cursor@2.0.0 ↗</a>
+  <a href="https://github.com/ritsuki-i/AirCursor">GitHub ↗</a>
+</div>
 
 <div id="region-box" hidden>
   <span id="region-hint"></span>
@@ -180,7 +192,49 @@
   <span id="region-toast-text"></span>
 </div>
 
-<main>
+<main id="main-content">
+
+<section class="band wrap try-first" id="experience">
+  <div>
+    <p class="eyebrow"><span class="lang-en">Try it. Then build with it.</span><span class="lang-ja">試して、そのままあなたのアプリへ。</span></p>
+    <h2><span class="lang-en">Your next click<br>could be touchless.</span><span class="lang-ja">次のクリックを、<br>触れずに。</span></h2>
+    <p class="lede"><span class="lang-en">Enable your camera. Point at the button, bring your thumb to your fingertips, hold briefly, then release your thumb to click. A mouse works here too.</span><span class="lang-ja">カメラを開始し、ボタンにポインターを合わせます。親指を指先に合わせて少し保持し、親指を離すとクリック。マウスでも試せます。</span></p>
+    <button id="try-camera" class="btn" type="button">Try with your hand</button>
+    <p id="gesture-feedback" class="gesture-feedback" role="status"><span class="lang-en">Camera starts only when you choose.</span><span class="lang-ja">カメラはボタンを押すまで起動しません。</span></p>
+  </div>
+  <div class="try-console">
+    <div class="console-caption"><span class="lang-en">A real button. A real event.</span><span class="lang-ja">いつものボタン。同じイベント。</span><span class="console-dot" aria-hidden="true"></span></div>
+    <button id="try-target" type="button"><span class="trial-orbit" aria-hidden="true">↗</span><span class="lang-en">Click without touching</span><span class="lang-ja">触れずにクリック</span></button>
+    <p id="try-result" role="status"><span class="lang-en">Your first click is the beginning.</span><span class="lang-ja">最初のクリックから、はじまる。</span></p>
+    <div class="trial-convert"><a href="https://www.npmjs.com/package/air-cursor"><span class="lang-en">Add this to your app ↗</span><span class="lang-ja">自分のアプリに導入 ↗</span></a><a href="#cite"><span class="lang-en">Use it in research? Cite AirCursor.</span><span class="lang-ja">研究で使う方へ：AirCursorを引用</span></a></div>
+  </div>
+</section>
+
+<section class="band wrap" id="quickstart">
+  <p class="eyebrow"><span class="lang-en">A little movement. A new way in.</span><span class="lang-ja">手の動きから、新しい体験へ。</span></p>
+  <div class="section-intro">
+    <h2><span class="lang-en">Your hands.<br>The whole web.</span><span class="lang-ja">その手で、<br>Webを動かす。</span></h2>
+    <p><span class="lang-en">A webcam, a browser, and you. Try it here, then bring the same gestures to your own interface.</span><span class="lang-ja">必要なのはWebカメラとブラウザだけ。ここで試した操作を、そのままあなたのインターフェースへ。</span></p>
+  </div>
+  <ol class="setup-grid">
+    <li>
+      <svg viewBox="0 0 240 126" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="55" y="12" width="130" height="82" rx="9"/><circle cx="120" cy="22" r="2" fill="currentColor"/><path d="M105 94v17m30-17v17m-42 0h54"/><rect x="79" y="40" width="82" height="35" rx="17" fill="#91baff15"/><path d="m114 50 16 8-16 8z"/><path d="m167 71 13 26 4-10 10-4z" fill="#050914"/></svg>
+      <h3><span class="lang-en">Start with your camera</span><span class="lang-ja">カメラを開始</span></h3>
+      <p><span class="lang-en">Press Start above and allow camera access. Face a light source and keep your whole hand in the camera preview.</span><span class="lang-ja">上の「開始」を押し、カメラを許可します。明るい場所で、プレビューに手全体が映るようにしてください。</span></p>
+    </li>
+    <li>
+      <svg viewBox="0 0 240 126" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><image href="./assets/gesture-pointer.webp" x="32" y="0" width="126" height="126" class="hand-image"/><path d="M155 44c29 0 35 16 35 38" stroke-dasharray="3 5"/><path d="m179 76 11 11 8-13"/><circle cx="168" cy="30" r="9"/><circle cx="168" cy="30" r="2" fill="currentColor"/></svg>
+      <h3><span class="lang-en">Point, then click</span><span class="lang-ja">指を合わせて操作</span></h3>
+      <p><span class="lang-en">Join your right index and middle fingertips to move the pointer. Bring in your thumb, hold briefly, then release to click; keep holding to drag.</span><span class="lang-ja">右手の人差し指と中指を合わせて移動。親指も合わせて少し保持し、離すとクリック。保持したまま動かすとドラッグできます。</span></p>
+    </li>
+    <li>
+      <svg viewBox="0 0 240 126" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="50" y="14" width="140" height="98" rx="9"/><path d="M50 34h140"/><circle cx="62" cy="24" r="2"/><circle cx="71" cy="24" r="2"/><rect x="65" y="48" width="45" height="46" rx="5" fill="#b599ee18"/><path d="M124 51h49m-49 12h36m-36 12h49m-49 12h28"/><path d="m92 73 12 25 4-10 10-4z" fill="#050914"/></svg>
+      <h3><span class="lang-en">Make yourself at home</span><span class="lang-ja">いつものUIで試す</span></h3>
+      <p><span class="lang-en">Explore the gesture guide and live demo below. Press Stop whenever you are done to release the camera.</span><span class="lang-ja">下のジェスチャーガイドとデモで、スクロールや範囲選択も体験できます。終了時は「停止」でカメラをオフに。</span></p>
+    </li>
+  </ol>
+  <p class="setup-note"><span class="lang-en">Camera access needs HTTPS or localhost. The model downloads on first use; video is processed on your device.</span><span class="lang-ja">カメラにはHTTPSまたはlocalhostが必要です。初回はモデルをダウンロードし、映像は端末内で処理します。</span></p>
+</section>
 
 <!-- =========================== gestures ============================ -->
 <section class="band wrap" id="gestures">
@@ -189,7 +243,7 @@
   <div class="gesture-grid">
     <article class="gesture-card">
       <div class="gesture-role"><span class="lang-en">RIGHT HAND</span><span class="lang-ja">右手</span></div>
-      <figure class="gesture-visual"><img src="./assets/gesture-pointer.webp" alt="Index and middle fingertips together"></figure>
+      <figure class="gesture-visual"><img src="./assets/gesture-pointer.webp" alt="Index and middle fingertips together" data-alt-ja="人差し指と中指を合わせる" loading="lazy" decoding="async"></figure>
       <h3><span class="lang-en">Pointer</span><span class="lang-ja">ポインター</span></h3>
       <p><span class="lang-en">Join your index and middle fingertips. Move your hand to point.</span><span class="lang-ja">人差し指と中指の先を合わせ、手を動かしてポインターを操作します。</span></p>
     </article>
@@ -197,17 +251,17 @@
     <article class="gesture-card">
       <div class="gesture-role"><span class="lang-en">RIGHT HAND</span><span class="lang-ja">右手</span></div>
       <figure class="gesture-visual gesture-sequence">
-        <img src="./assets/gesture-click-ready.webp" alt="Pointer gesture with thumb open">
+        <img src="./assets/gesture-click-ready.webp" alt="Pointer gesture with thumb open" data-alt-ja="親指を開いたポインター操作" loading="lazy" decoding="async">
         <span aria-hidden="true">→</span>
-        <img src="./assets/gesture-click-active.webp" alt="Thumb joins the pointer gesture">
+        <img src="./assets/gesture-click-active.webp" alt="Thumb joins the pointer gesture" data-alt-ja="親指を合わせたクリック操作" loading="lazy" decoding="async">
       </figure>
       <h3><span class="lang-en">Click & drag</span><span class="lang-ja">クリック・ドラッグ</span></h3>
-      <p><span class="lang-en">From Pointer, bring in your thumb to click. Keep the three fingertips together to drag.</span><span class="lang-ja">ポインター状態から親指を合わせてクリック。3本を合わせたまま動かすとドラッグします。</span></p>
+      <p><span class="lang-en">From Pointer, bring in your thumb, hold briefly, then release it to click. Keep the three fingertips together to drag.</span><span class="lang-ja">親指を合わせて少し保持し、離すとクリック。3本を合わせたまま動かすとドラッグします。</span></p>
     </article>
 
     <article class="gesture-card">
       <div class="gesture-role"><span class="lang-en">RIGHT HAND</span><span class="lang-ja">右手</span></div>
-      <figure class="gesture-visual"><img src="./assets/gesture-grab.webp" alt="Thumb and index finger pinched with other fingers open"></figure>
+      <figure class="gesture-visual"><img src="./assets/gesture-grab.webp" alt="Thumb and index finger pinched with other fingers open" data-alt-ja="親指と人差し指でつまむ" loading="lazy" decoding="async"></figure>
       <h3><span class="lang-en">Grab & scroll</span><span class="lang-ja">つかんでスクロール</span></h3>
       <p><span class="lang-en">Pinch thumb and index only, keeping the other fingers apart. Move to scroll the page.</span><span class="lang-ja">他の指を離したまま親指と人差し指だけをつまみ、手を動かしてスクロールします。</span></p>
     </article>
@@ -215,20 +269,20 @@
     <article class="gesture-card region-gesture-card">
       <div class="gesture-role"><span class="lang-en">LEFT + RIGHT HAND</span><span class="lang-ja">左手＋右手</span></div>
       <figure class="gesture-visual gesture-sequence">
-        <img src="./assets/gesture-region-start.webp" alt="Both thumb-and-index pinches meeting at one point">
+        <img src="./assets/gesture-region-start.webp" alt="Both thumb-and-index pinches meeting at one point" data-alt-ja="両手のつまみを一点に合わせる" loading="lazy" decoding="async">
         <span aria-hidden="true">→</span>
-        <img src="./assets/gesture-region-spread.webp" alt="Right hand at the upper-right and left hand at the lower-left defining a green screenshot area">
+        <img src="./assets/gesture-region-spread.webp" alt="Hands spread to opposite corners to frame a screenshot" data-alt-ja="両手を対角へ広げて範囲を選ぶ" loading="lazy" decoding="async">
       </figure>
       <h3><span class="lang-en">Select a screenshot area</span><span class="lang-ja">スクリーンショット範囲を選択</span></h3>
-      <p><span class="lang-en">Meet both pinches at one point, then spread to opposite corners. Open both hands to freeze the green area, then pinch once with each hand to capture it. Hold both hands in fists to cancel.</span><span class="lang-ja">両手のつまみを一点で合わせ、対角方向へ広げます。両手を開いて緑の範囲を固定し、左右それぞれでもう一度つまむとスクリーンショットを撮影します。解除は両手をグーにして保持します。</span></p>
+      <p><span class="lang-en">Meet both pinches at one point, then spread to opposite corners. Open both hands to freeze the selection, then pinch once with each hand to capture it. Wait without confirming to cancel.</span><span class="lang-ja">両手のつまみを一点で合わせ、対角方向へ広げます。両手を開いて範囲を固定し、左右それぞれでもう一度つまむと撮影します。確定せず待つと解除されます。</span></p>
     </article>
 
     <article class="gesture-card">
       <div class="gesture-role"><span class="lang-en">LEFT + RIGHT HAND</span><span class="lang-ja">左手＋右手</span></div>
       <figure class="gesture-visual gesture-sequence modifier-sequence">
-        <img src="./assets/gesture-off-fist.webp" alt="Left hand closed into a fist">
+        <img src="./assets/gesture-off-fist.webp" alt="Left hand closed into a fist" data-alt-ja="左手を握る" loading="lazy" decoding="async">
         <span aria-hidden="true">＋</span>
-        <img src="./assets/gesture-click-active.webp" alt="Right hand click gesture">
+        <img src="./assets/gesture-click-active.webp" alt="Right hand click gesture" data-alt-ja="右手でクリックする" loading="lazy" decoding="async">
         <span class="gesture-result"><span class="lang-en">RIGHT CLICK</span><span class="lang-ja">右クリック</span></span>
       </figure>
       <h3><span class="lang-en">Right click modifier</span><span class="lang-ja">右クリック修飾</span></h3>
@@ -284,7 +338,7 @@
 
     <div class="pad">
       <h3>Region capture</h3>
-      <p>Pinch with <em>both</em> hands to frame an area, open them, then tap once with each hand. Hold both hands in fists to cancel. The crop lands here, and the result is reported next to your hands.</p>
+      <p>Pinch with <em>both</em> hands to frame an area, open them, then tap once with each hand. Wait without confirming to cancel. The crop lands here, and the result is reported next to your hands.</p>
       <div id="shot-frame">
         <img id="shot-img" alt="The area you last framed with both hands" hidden>
         <span id="shot-placeholder">Nothing framed yet</span>
@@ -301,7 +355,10 @@
 <!-- ============================ install ============================ -->
 <section class="band wrap" id="install">
   <p class="eyebrow">Install</p>
-  <h2>Ship it in three lines.</h2>
+  <h2>One install. A new input.</h2>
+  <div class="install-banner"><code>npm install air-cursor</code><button type="button" data-copy-install><span class="lang-en">Copy install command</span><span class="lang-ja">コマンドをコピー</span></button><a href="https://www.npmjs.com/package/air-cursor"><span class="lang-en">View package ↗</span><span class="lang-ja">npmで見る ↗</span></a></div>
+  <p id="install-feedback" role="status"></p>
+  <div class="resource-links"><a href="https://www.npmjs.com/package/air-cursor">npm ↗</a><a href="https://github.com/ritsuki-i/AirCursor">GitHub ↗</a><a href="https://github.com/ritsuki-i/AirCursor#readme"><span class="lang-en">Documentation ↗</span><span class="lang-ja">ドキュメント ↗</span></a></div>
   <div class="two-col">
     <div>
       <p class="lede">
@@ -328,6 +385,10 @@
 
 <span class="k">const</span> engine = <span class="k">new</span> AirCursorEngine({
   video: document.querySelector(<span class="s">'video'</span>),
+  <span class="c">// The same lightweight settings as this demo</span>
+  inferenceFps: 24,
+  hands: { modelComplexity: 0 },
+  camera: { width: 480, height: 360 },
   onState: (s) =&gt; console.log(s?.mode),
 });
 <span class="k">await</span> engine.start();</code></pre>
@@ -382,8 +443,8 @@
         <code>requestAnimationFrame</code> instead.
       </p>
       <p class="lede">
-        The field behind the hero is the same readout, not a separate scene — which is why
-        it does not fight the model for the frame.
+        The galaxy runs in a rendering worker where supported. While the camera is active,
+        the page lowers rendering cost to leave more room for hand interaction.
       </p>
     </div>
   </div>
@@ -407,6 +468,15 @@
 </section>
 
 <!-- ============================== cite ============================= -->
+<section class="band wrap" id="faq">
+  <p class="eyebrow">FAQ</p>
+  <h2><span class="lang-en">Before you build.</span><span class="lang-ja">導入する前に。</span></h2>
+  <details><summary><span class="lang-en">How do I add hand tracking to a React app?</span><span class="lang-ja">Reactアプリへハンドトラッキングを追加するには？</span></summary><p><span class="lang-en">Run <code>npm install air-cursor</code>, import AirCursor, and render <code>&lt;AirCursor /&gt;</code>. Visitors start the camera themselves. Your existing click and pointer handlers receive the gesture events.</span><span class="lang-ja"><code>npm install air-cursor</code> で導入し、AirCursorをimportして <code>&lt;AirCursor /&gt;</code> を配置します。利用者がカメラを開始すると、既存のクリック・ポインターハンドラへイベントが届きます。</span></p></details>
+  <details><summary><span class="lang-en">Can I use it with vanilla JavaScript?</span><span class="lang-ja">通常のJavaScriptでも使えますか？</span></summary><p><span class="lang-en">Yes. Import <code>AirCursorEngine</code> from the same package and pass a video element. The engine works without a React UI. This demo uses that public engine API; the code above shows the setup.</span><span class="lang-ja">同じパッケージから <code>AirCursorEngine</code> をimportし、video要素を渡します。エンジンはReactのUIなしでも利用でき、このデモも同じ公開APIを使っています。設定例は上の導入コードをご覧ください。</span></p></details>
+  <details><summary><span class="lang-en">Does the camera video leave my device?</span><span class="lang-ja">カメラ映像は外部へ送信されますか？</span></summary><p><span class="lang-en">Hand tracking runs in the browser. Video and hand landmarks are not uploaded. The first start downloads the MediaPipe model; self-hosting its assets is supported through <code>mediapipeBasePath</code>.</span><span class="lang-ja">手の認識はブラウザ内で行い、映像や手の座標を送信しません。初回起動ではMediaPipeモデルをダウンロードします。<code>mediapipeBasePath</code> でモデルを自分のサーバーから配信することもできます。</span></p></details>
+  <details><summary><span class="lang-en">How do I cite AirCursor?</span><span class="lang-ja">AirCursorを引用するには？</span></summary><p><span class="lang-en">Copy the BibTeX entry below for your paper or project. Citation is appreciated and optional. Include the version you used, and link to the repository so others can reproduce your work.</span><span class="lang-ja">下のBibTeXをコピーして論文やプロジェクトにお使いください。引用は任意ですが、していただけると幸いです。再現できるよう、使ったバージョンとリポジトリへのリンクを記載してください。</span></p></details>
+</section>
+
 <section class="band wrap" id="cite">
   <p class="eyebrow">Citation</p>
   <h2>Using it in something?</h2>
@@ -414,13 +484,15 @@
     AirCursor is MIT licensed, so you are free to use it however you like. If it ends up
     in a product, a paper or a project you publish, a citation is appreciated.
   </p>
-<pre><code>@software{ishikawa2026aircursor,
+  <div class="citation-actions"><a class="btn npm-cta" href="https://www.npmjs.com/package/air-cursor"><span class="lang-en">Install from npm ↗</span><span class="lang-ja">npmから導入 ↗</span></a><span><span class="lang-en">Build freely. Credit the tool.</span><span class="lang-ja">自由に作る。使ったツールを引用する。</span></span></div>
+<pre><code id="citation">@software{ishikawa2026aircursor,
   author  = {Ishikawa, Ritsuki},
   title   = {{AirCursor}: A Touchless Pointer for the Web},
   year    = {2026},
   version = {2.0.0},
   url     = {https://github.com/ritsuki-i/AirCursor}
 }</code></pre>
+<button id="copy-citation" class="copy-citation" type="button"><span class="lang-en">Copy BibTeX</span><span class="lang-ja">BibTeXをコピー</span></button><span id="citation-feedback" class="copy-feedback" role="status"></span>
 </section>
 
 </main>
@@ -431,6 +503,8 @@
     <span>
       <a href="https://github.com/ritsuki-i/AirCursor">GitHub</a> ·
       <a href="https://www.npmjs.com/package/air-cursor">npm</a> ·
+      <a href="#cite"><span class="lang-en">Citation</span><span class="lang-ja">引用</span></a> ·
+      <a href="https://github.com/ritsuki-i/AirCursor/blob/main/LICENSE">MIT License</a> ·
       <a href="https://github.com/ritsuki-i/AirCursor/blob/main/README.ja.md">日本語</a>
     </span>
   </div>

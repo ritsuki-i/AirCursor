@@ -58,7 +58,8 @@
     "prepublishOnly": "npm run build",
     "test": "node --test test/",
     "pretest": "npm run build",
-    "build:site": "esbuild site/core-entry.js --bundle --format=esm --minify --target=es2020 --outfile=docs/assets/aircursor-core.js",
+    "build:site": "node scripts/build-site.mjs && npm run build:galaxy",
+    "build:galaxy": "esbuild site/galaxy-entry.ts --bundle --format=esm --minify --target=es2020 --outfile=docs/assets/galaxy.js && esbuild site/galaxy-worker.ts --bundle --format=esm --minify --target=es2020 --outfile=docs/assets/galaxy-worker.js",
     "label": "node -e \"console.log('http://127.0.0.1:8777/tools/labeler.html')\" && npx --yes http-server docs -p 8777 -c-1 --silent"
   },
   "dependencies": {

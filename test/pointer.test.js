@@ -206,3 +206,56 @@ test('cancel aborts a press without producing a click', () => {
   assert.equal(clicks, 0);
   assert.equal(cancels, 1);
 });
+
+test('release outside a drag handle still releases the captured handle', () => {
+  const dom = setupDom('<div id="handle"></div><div id="other"></div>');
+  const handle = dom.window.document.getElementById('handle');
+  const other = dom.window.document.getElementById('other');
+  const { VirtualPointer } = loadPointer();
+  const pointer = new VirtualPointer();
+  let ups = 0, clicks = 0;
+  handle.addEventListener('pointerup', () => ups++);
+  handle.addEventListener('click', () => clicks++);
+  stubHitTest(dom, handle); pointer.move(10, 10); pointer.press();
+  stubHitTest(dom, other); pointer.move(200, 200); pointer.release();
+  assert.equal(ups, 1);
+  assert.equal(clicks, 0);
+  assert.equal(pointer.pressed, false);
+});
+
+test('a disabled button or disabled fieldset cannot be pressed by hand', () => {
+  const dom = setupDom('<button disabled><span id="label">Start</span></button><fieldset disabled><button id="nested">Start</button></fieldset>');
+  const { VirtualPointer } = loadPointer();
+  const pointer = new VirtualPointer();
+  let clicks = 0;
+  dom.window.document.addEventListener('click', () => clicks++);
+  for (const id of ['label', 'nested']) {
+    stubHitTest(dom, dom.window.document.getElementById(id));
+    pointer.move(10, 10); pointer.press(); pointer.release();
+    assert.equal(pointer.pressed, false);
+  }
+  assert.equal(clicks, 0);
+});
+
+test('a button disabled during a press cannot activate on release', () => {
+  const dom = setupDom('<button id="button">Start</button>');
+  const button = dom.window.document.getElementById('button');
+  const { VirtualPointer } = loadPointer();
+  const pointer = new VirtualPointer();
+  let clicks = 0;
+  button.addEventListener('click', () => clicks++);
+  stubHitTest(dom, button); pointer.move(10, 10); pointer.press();
+  button.disabled = true; pointer.release();
+  assert.equal(clicks, 0);
+});
+
+test('an enabled button inside a disabled fieldset first legend still works', () => {
+  const dom = setupDom('<fieldset disabled><legend><button id="button">Enable</button></legend></fieldset>');
+  const button = dom.window.document.getElementById('button');
+  const { VirtualPointer } = loadPointer();
+  const pointer = new VirtualPointer();
+  let clicks = 0;
+  button.addEventListener('click', () => clicks++);
+  stubHitTest(dom, button); pointer.move(10, 10); pointer.press(); pointer.release();
+  assert.equal(clicks, 1);
+});

@@ -1,42 +1,63 @@
 // docs/assets/spellfield.js
 //
-// The particle field.
+// The hero field.
 //
-// Nothing on this page draws a hand, and nothing draws a spell either. Light is
-// pulled out of the surrounding dust and into the fingertips the tracker
-// reports, and every shape you see is the result of the simulation rather than
-// artwork: there are no rings, no flares, no outlines anywhere in this file.
+// Nothing on this page draws a hand, and nothing draws a spell either. Every
+// shape on screen is a consequence of the simulation rather than artwork: there
+// are no rings, no flares and no outlines anywhere in this file, and the two
+// places one crept in are commented where they were taken back out.
 //
-// How the light is made
-// ---------------------
-// Captured particles obey a small fluid model — attraction to the fingertip,
-// short-range repulsion from each other, and a little viscosity — so they pack
-// the way a liquid would and the mass finds its own radius. They are drawn as
-// soft additive blobs, so brightness is simply density: where the packing is
-// tightest the channels saturate and the core goes white, and it falls away
-// smoothly outward with no edge anywhere. Making the light out of density
-// rather than out of drawn shapes is the whole point; a ring or a cross drawn
-// by hand always looks drawn.
+// What it is made of
+// ------------------
+// Two layers, and the order matters. The field itself is a full-screen pass
+// whose light is the iso-contours of a smooth scalar field — long unbroken
+// streamlines that belong to one flow, because contours of a scalar field
+// cannot cross or end. Suspended in it is a thin scatter of points: highlights
+// within the volume, and the material the hand actually gathers.
+//
+// It used to be the other way round, three thousand points carrying the whole
+// image. However slowly they were made to move, a field of independent dots
+// reads as a swarm, and the page needs the opposite of that.
+//
+// The sequence
+// ------------
+// Seven states, all of them readings of one number — `charge`, which rises only
+// while a gesture is held and falls back when it is not:
+//
+//   Ambient      nobody is touching it, and it still has to be worth looking at
+//   Detection    something is present; the field acknowledges it and no more
+//   Attraction   space bends toward the hand, hard near it and barely far away
+//   Compression  wide, pale and slow becomes narrow, bright and fast
+//   Silence      a fifth of a second with the motion taken out and the lights down
+//   Rupture      it collapses further, then fails: flash, then a wave outward
+//   Afterglow    the residue, and the flow reassembling over a few seconds
+//
+// No stage adds an effect on top of the one before it. Each is the same field
+// being deformed — attraction bends the space the contours are sampled in,
+// compression contracts it, the rupture drives a displacement wave through it —
+// which is what makes the sequence read as cause and effect rather than as a
+// playlist. The loudest moment is set up by the quietest: take the Silence out
+// and the burst is merely bright; leave it in and it lands.
 //
 // The gestures
 // ------------
-//   aim    (index + middle)          light is drawn in over three seconds
-//   grab   (index + thumb)           the same, held tighter
-//   click  (index + middle + thumb)  the mass bursts
+//   aim    (index + middle)          the field is drawn in and compressed
+//   grab   (index + thumb)           stirs, but never charges: it is for scrolling
+//   click  (index + middle + thumb)  ruptures, if there is enough charge to
 //
-// A burst is one visible action: release, coast, stop. Long-term density is
-// repaired separately. The field occasionally takes an unnoticed surplus point
-// from a crowded area, places it in the emptiest area almost dark, and lets its
-// glow develop over several seconds. No light flies back and nothing pops.
+// That last condition is the whole of the "do not let them detonate it by
+// accident" rule. A hero that explodes on every click teaches nothing about
+// cause, and this page is also a working demo where aiming at a button for two
+// seconds is something visitors do constantly. A hold alone therefore stops
+// short of the top (HOLD_CAP) and a click below RUPTURE_AT only disperses.
 //
-// It stays red while it travels and cools to white as it settles.
-//
-// The hand can only hold CAPACITY particles. Move a full one and its trailing
-// edge is shed and cools down while fresh dust is taken up at the leading edge,
-// which is what keeps the whole field circulating.
-//
-// After a click the field reloads: one second to scatter, one second dead, one
-// second before capture is at full rate again.
+// The hand can hold CAPACITY particles. Move a full one and its trailing edge
+// is shed and cools while fresh dust is taken up at the leading edge, which is
+// what keeps the field circulating. After a rupture it reloads: one second to
+// scatter, one dead, one before capture is at full rate again. Long-term
+// density is repaired separately, by moving an unnoticed surplus point into the
+// emptiest area almost dark and letting its glow develop over several seconds.
+// No light flies back and nothing pops.
 
 const VERT = `#version 300 es
 precision highp float;
@@ -90,6 +111,202 @@ void main() {
   gl_Position = vec4(a_quad, 0.0, 1.0);
 }`;
 
+// The field itself.
+//
+// Everything the page looks like when nobody is touching it is this one pass.
+// It is deliberately not made of particles: a thousand independent dots read as
+// a swarm no matter how they are tuned, and a swarm is the one thing this hero
+// must not look like. What reads as an energy field instead is *continuity* —
+// long unbroken lines of light that clearly belong to a single flow.
+//
+// So the lines are not drawn. A smooth scalar field psi is evaluated per pixel
+// and the lines are its iso-contours. Contours of a scalar field are exactly
+// the streamlines of the curl flow beneath it, which is why they never cross,
+// never end in mid-air, and bend as one sheet when the field is disturbed —
+// the three properties that separate a flow from a scatter. Bending the space
+// psi is sampled in therefore bends every line at once, consistently, for free.
+//
+// That is the whole mechanism of the hero. Attraction bends the sample space
+// toward the hand; compression contracts it; the rupture pushes a displacement
+// wave outward through it. No stage adds an effect on top — each one is the
+// same field being deformed, which is what makes the sequence read as cause
+// and effect rather than as a playlist of animations.
+const FLOW_FRAG = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+uniform vec2 u_resolution;
+/** Attractor, normalised 0..1 with y down, matching the rest of the file. */
+uniform vec2 u_center;
+/**
+ * The flow's own clock. Advanced by the host rather than taken from the frame
+ * time, so Compression can speed it up and Silence can stop it dead without
+ * this shader knowing that either state exists.
+ */
+uniform float u_time;
+/** 0..1, how strongly space bends toward the hand. */
+uniform float u_pull;
+/** 0..1, how far the field has been contracted into the core. */
+uniform float u_compress;
+/** Rupture wave position, 0..1 across its travel. 0 = no wave. */
+uniform float u_shock;
+/** Global multiplier. Silence uses it to take the field down a stop. */
+uniform float u_dim;
+out vec4 outColor;
+
+float hash21(vec2 p) {
+  p = fract(p * vec2(123.34, 456.21));
+  p += dot(p, p + 45.32);
+  return fract(p.x * p.y);
+}
+
+float vnoise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  float a = hash21(i);
+  float b = hash21(i + vec2(1.0, 0.0));
+  float c = hash21(i + vec2(0.0, 1.0));
+  float d = hash21(i + vec2(1.0, 1.0));
+  return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+
+float fbm(vec2 p) {
+  float s = 0.0;
+  float a = 0.5;
+  for (int k = 0; k < 4; k++) {
+    s += a * vnoise(p);
+    p = p * 2.03 + vec2(17.1, 9.7);
+    a *= 0.5;
+  }
+  return s;
+}
+
+/**
+ * One sheet of streamlines.
+ *
+ * The contour spacing is measured in screen space with fwidth, so the lines
+ * stay the same visual weight wherever the field happens to be steep. Without
+ * it, the places where psi changes fastest turn into a grey wash of aliased
+ * contours, and those are precisely the places the hand is pulling hardest —
+ * the image would fall apart exactly where it most needs to hold together.
+ */
+float sheet(vec2 p, float lines, float thickness) {
+  float psi = fbm(p) * lines;
+  float w = fwidth(psi);
+  // A sheet whose contours have collapsed below pixel spacing has no legible
+  // line left in it, only noise. Fade it out rather than let it alias.
+  float legible = 1.0 - smoothstep(0.28, 0.62, w);
+  float band = abs(fract(psi) - 0.5) * 2.0;
+  float edge = thickness + w * 1.6;
+  return (1.0 - smoothstep(0.0, min(edge, 0.94), band)) * legible;
+}
+
+void main() {
+  vec2 res = u_resolution;
+  float aspect = res.x / max(res.y, 1.0);
+  // y down, so this agrees with setAttractors and with the DOM.
+  vec2 q = vec2(v_uv.x, 1.0 - v_uv.y);
+  vec2 p = vec2(q.x * aspect, q.y);
+  vec2 c = vec2(u_center.x * aspect, u_center.y);
+
+  vec2 toCentre = c - p;
+  float dist = length(toCentre);
+  vec2 dir = toCentre / max(dist, 0.0001);
+
+  // ---- the deformation ----------------------------------------------------
+  //
+  // Near space responds hard and immediately, far space barely and late. That
+  // gradient is the entire read of "the hand has weight": a uniform pull moves
+  // the image, a graded one bends it, and only the second looks like a field.
+  float grip = 1.0 / (1.0 + dist * dist * 26.0);
+  float draw = u_pull * grip;
+
+  // Toward the hand, and around it. The rotation is what makes the lines
+  // *curve* in rather than slide in; pure radial displacement only squeezes the
+  // picture and reads as a lens, not as an attraction.
+  float swirl = draw * 1.15 * (1.0 - u_compress * 0.35);
+  float cs = cos(swirl);
+  float sn = sin(swirl);
+  vec2 rel = p - c;
+  rel = vec2(rel.x * cs - rel.y * sn, rel.x * sn + rel.y * cs);
+  // Contraction toward the core. Compression drives this much harder than
+  // attraction does: it is the term that turns wide-and-pale into
+  // narrow-and-bright, because pulling the sample space inward packs the
+  // contours together without raising any single line's brightness directly.
+  rel *= 1.0 - draw * 0.30 - u_compress * grip * 0.52;
+  vec2 sp = c + rel;
+
+  // The rupture, as a displacement wave rather than a drawn ring: space itself
+  // is shoved outward in a travelling shell, so the lines it passes through
+  // stretch and snap back. A drawn ring expanding over a still field always
+  // looks like a decal laid on top of it.
+  float shockR = u_shock * 1.9;
+  float wave = 0.0;
+  if (u_shock > 0.0) {
+    float width = 0.055 + u_shock * 0.16;
+    wave = exp(-pow((dist - shockR) / width, 2.0)) * (1.0 - u_shock);
+    sp -= dir * wave * 0.34;
+  }
+
+  // ---- the sheets ---------------------------------------------------------
+  //
+  // Three, at different scales and drifting at different rates. The parallax is
+  // the depth: nothing here is actually layered in z, but sheets that slide
+  // past each other at different speeds are read as being at different
+  // distances, and that is the only cue the image needs.
+  vec2 stretch = vec2(0.20, 1.15);
+
+  float far = sheet(sp * 0.85 * stretch + vec2(u_time * 0.011, u_time * 0.004), 3.2, 0.22);
+  float mid = sheet(sp * 1.45 * stretch + vec2(-u_time * 0.019, u_time * 0.008 + 31.7), 4.2, 0.16);
+  float near = sheet(sp * 2.40 * stretch + vec2(u_time * 0.031, -u_time * 0.014 + 73.2), 5.4, 0.11);
+
+  // ---- haze ---------------------------------------------------------------
+  // Very low frequency and with no contours of its own: the medium the lines
+  // are suspended in. Without it the streamlines float on black and the hero
+  // reads as a wireframe rather than as lit space.
+  float haze = fbm(sp * 0.85 + vec2(u_time * 0.008, u_time * 0.004));
+  haze = smoothstep(0.32, 0.95, haze);
+
+  // Energy concentrates where the hand is, and the concentration sharpens as
+  // compression proceeds: the same light occupying less and less of the screen.
+  float halo = exp(-dist * dist * mix(3.4, 26.0, u_compress));
+  float focus = 1.0 + (u_pull * 1.5 + u_compress * 5.0) * halo;
+
+  // A slow breath across the whole field. It is under a tenth of a stop, and it
+  // is the difference between a still image and one that is alive untouched.
+  float breath = 0.93 + 0.07 * sin(u_time * 0.21) * (1.0 - u_compress);
+
+  float lines = far * 0.34 + mid * 0.40 + near * 0.26;
+
+  // Bright near the energy, dark at the edges of the frame. The falloff opens
+  // up as the hand takes hold, so Attraction is partly the field reaching
+  // further out — more of the screen becomes involved, not just brighter.
+  float reach = mix(0.78, 1.40, u_pull);
+  float presence = 0.30 + 0.70 * exp(-dist * dist / (reach * reach));
+
+  float intensity = (lines * (0.52 + haze * 0.64) + haze * 0.085) * presence * focus * breath;
+  // The wave brightens the streamlines it is passing through, far more than it
+  // brightens the space between them. That is the difference between a shape
+  // travelling *over* the field and a disturbance travelling *through* it: the
+  // front inherits the field's own irregularity instead of being a clean
+  // annulus of its own, and what the eye follows is the lines being shoved.
+  intensity += wave * (0.22 + lines * 2.1) * (0.7 + u_shock * 0.9);
+
+  if (intensity < 0.0015) { outColor = vec4(0.0); return; }
+
+  // ---- colour -------------------------------------------------------------
+  // One world, graded by how close to the energy a pixel is: deep crimson at
+  // the edges of the screen, the page's own red through the body of the field,
+  // and white only where it is genuinely hot. Keeping the far field dark is
+  // what lets the hero sit behind type without fighting it.
+  vec3 col = vec3(0.33, 0.035, 0.075);
+  col = mix(col, vec3(1.0, 0.26, 0.34), smoothstep(0.0, 0.85, lines));
+  col = mix(col, vec3(1.0, 0.74, 0.42), halo * (u_pull * 0.45 + u_compress * 0.55));
+  col = mix(col, vec3(1.0, 0.97, 0.94), halo * u_compress * 0.72);
+
+  outColor = vec4(col * intensity * u_dim, intensity * u_dim);
+}`;
+
 // Radiance. The compressed mass is not a glowing ball — light escaping a point
 // leaves along rays. These are generated, not drawn: the angular profile is a
 // sum of sines at incommensurate frequencies, raised to a power so it breaks
@@ -106,6 +323,8 @@ uniform float u_charge;
 uniform float u_time;
 uniform float u_burst;
 uniform float u_exposure;
+/** 0..1 across State 3. Contracts the rings and concentrates the core. */
+uniform float u_compress;
 out vec4 outColor;
 
 float hash(float n) {
@@ -144,29 +363,68 @@ void main() {
   float needles = pow(max(0.0, sin(a * 19.0 + 1.8) * sin(a * 31.0 - 0.6)), 18.0);
   needles *= exp(-d / (1.2 + sizeCharge * 2.2)) * 0.42;
 
+  // The spokes belong to light being held, not to light that has already
+  // left. Once the wave is away they are the most graphic thing on screen and
+  // they anchor the eye to a static star while everything else is moving
+  // outward — so they go, and the departing particles carry the radial read.
   float ray = (rays + needles) * smoothstep(0.10, 0.38, d) / (0.34 + d * 0.18);
+  ray *= 1.0 - smoothstep(0.04, 0.42, u_burst);
   // Keep the ring at least about two physical pixels thick. Scaling the whole
   // effect down must not make this sub-pixel feature disappear.
   float ringWidth = max(0.03, 1.1 / max(u_radius, 1.0));
   float ringGrowth = smoothstep(0.035, 0.34, u_charge);
-  float ringRadius = mix(0.82, 1.72, ringGrowth) + sin(u_time * 2.4) * mix(0.025, 0.06, ringGrowth);
-  float breathingRing = exp(-pow((d - ringRadius) / ringWidth, 2.0)) * mix(0.38, 0.86, ringGrowth);
+  // Gathering widens the rings; compression then pulls them back in hard.
+  //
+  // This direction was wrong for a long time and it mattered more than it
+  // looks. Energy arriving made the rings grow, so the more the field gave up
+  // to the hand the *larger* and softer the result got — which is the shape of
+  // something venting, not something being squeezed. Contracting the radius
+  // while the brightness below climbs is the whole read of compression: less
+  // space, more light, and the two changing together.
+  float squeeze = 1.0 - u_compress * 0.68;
+  float ringRadius = (mix(0.82, 1.72, ringGrowth)) * squeeze
+    + sin(u_time * 2.4) * mix(0.025, 0.06, ringGrowth) * (1.0 - u_compress);
+  float breathingRing = exp(-pow((d - ringRadius) / ringWidth, 2.0))
+    * mix(0.38, 0.86, ringGrowth) * (1.0 + u_compress * 1.9);
   // A second, softer halo becomes visible only when the centre is highly
   // charged, making the rings feel like a consequence of the growing light.
   float outerRingRadius = ringRadius * 1.38;
   float outerRing = exp(-pow((d - outerRingRadius) / (ringWidth * 1.35), 2.0));
-  outerRing *= smoothstep(0.20, 0.34, u_charge) * 0.34;
+  outerRing *= smoothstep(0.20, 0.34, u_charge) * 0.34 * (1.0 + u_compress * 1.4);
+  // Both rings belong to containment. Once containment has failed they are
+  // circles concentric with the departing wave, and three concentric circles is
+  // a target.
+  float contained = 1.0 - smoothstep(0.0, 0.12, u_burst);
+  breathingRing *= contained;
+  outerRing *= contained;
   // Begin almost at the core so the viewer can follow the wave travelling
   // outward instead of seeing a detached circle appear at its destination.
+  //
+  // Not a ring, though. A thin bright circle is a drawn primitive and at this
+  // size it reads as a sigil — the one thing this hero may not look like.
+  // Perturbing its radius was tried and is worse: a lobed closed curve is still
+  // a closed curve, and it reads as an atom. The fix is to have no locatable
+  // edge at all. The front widens steeply as it travels and its peak falls off
+  // with it, so what crosses the screen is a band of brightness rather than a
+  // line, and there is nothing left for the eye to trace.
   float shockRadius = 0.08 + u_burst * 5.60;
-  float shockWidth = ringWidth * (1.0 + u_burst * 0.45);
-  float shockRing = exp(-pow((d - shockRadius) / shockWidth, 2.0)) * u_burst * 1.55;
+  float shockWidth = ringWidth * (1.0 + u_burst * 16.0);
+  // Asymmetric across the front: steep on the outside, with a long decaying
+  // tail drawn back toward the centre. That profile is what a pressure wave
+  // actually has, and it is also what stops this reading as a ring — a ring has
+  // two edges the eye can find, and this has one.
+  float sd = (d - shockRadius) / shockWidth;
+  float falloff = sd > 0.0 ? 3.0 : 0.45;
+  float shockRing = exp(-sd * sd * falloff)
+    * u_burst * 0.42 * (1.0 - smoothstep(0.25, 1.0, u_burst));
   // A broad red ignition flash bridges the stored core and the departing
   // particles. It rises immediately, then gets out of the way of the wave.
   float ignition = smoothstep(0.0, 0.025, u_burst) * (1.0 - smoothstep(0.16, 0.34, u_burst));
   float redFlash = exp(-d * d * 0.72) * ignition * 2.25;
-  float innerGlow = exp(-d * d * 1.9) * 0.72;
-  float core = exp(-d * d * 26.0) * 3.1 + exp(-d * d * 96.0) * 4.2;
+  float emptied = 1.0 - smoothstep(0.02, 0.30, u_burst);
+  float innerGlow = exp(-d * d * mix(1.9, 7.4, u_compress)) * 0.72 * emptied;
+  float core = (exp(-d * d * mix(26.0, 74.0, u_compress)) * (3.1 + u_compress * 2.6)
+    + exp(-d * d * mix(96.0, 260.0, u_compress)) * (4.2 + u_compress * 5.4)) * emptied;
   float i = (ray * 2.1 + breathingRing + outerRing + shockRing + redFlash + innerGlow + core) * u_charge * pulse;
   if (i < 0.002) { outColor = vec4(0.0); return; }
 
@@ -246,9 +504,31 @@ const HOT = [1.0, 0.13, 0.20];
 /** What the densest part of the mass burns at. */
 const WHITE = [1.0, 0.94, 0.90];
 
-const COUNT = 3400;
-/** How many particles a hand can hold. */
-const CAPACITY = 560;
+// The dust is no longer the field.
+//
+// Ambient light is the flow pass above; these points are highlights scattered
+// through it — the glints a real volume of illuminated dust would throw, and
+// the material the hand actually gathers. Two thirds of them went away when the
+// flow arrived, because a full field of them competed with the streamlines and
+// dragged the image back toward the particle demo the flow exists to replace.
+// What is left also costs a third less per frame, which MediaPipe spends.
+const COUNT = 1200;
+/**
+ * How many particles a hand can hold.
+ *
+ * Cut hard when the flow arrived, and for two reasons that turn out to be the
+ * same reason. At 380 out of 1200 the hand ended up holding a third of every
+ * grain on screen: the surrounding field visibly emptied while it charged,
+ * which is the opposite of a field being concentrated, and the core itself
+ * stopped being a core — several hundred overlapping sprites saturate the
+ * buffer, the bright pass takes all of it, and two blur passes turn what should
+ * be a small dense nucleus into a sun a quarter of the screen across.
+ *
+ * Compression is meant to read as less space and more light. It cannot read as
+ * either if the light has nowhere left to be taken from and the bright part is
+ * the largest thing in the frame.
+ */
+const CAPACITY = 210;
 /** Seconds to fill an empty hand. */
 const FILL_S = 3.0;
 /** How long a released particle coasts before it can be picked up again. */
@@ -310,8 +590,8 @@ const APPEAR_S = 3.2;
  */
 const SHRINK_ABOVE_MS = 20;
 const GROW_BELOW_MS = 17.5;
-/** Never thin below this: past it the field stops reading as a field. */
-const MIN_ACTIVE = 1500;
+/** Never thin below this: past it the highlights stop reading as a layer. */
+const MIN_ACTIVE = 640;
 /**
  * …and the fewest particles the hand may hold.
  *
@@ -325,9 +605,67 @@ const MIN_ACTIVE = 1500;
  * since the visual radius follows `fill`, which is normalised by whatever the
  * capacity currently is.
  */
-const MIN_CAPACITY = 280;
+const MIN_CAPACITY = 120;
 /** Captured particles let go per second while shedding down to a new capacity. */
 const SHED_PER_S = 190;
+
+// --- ambient drift -----------------------------------------------------------
+//
+// The dust moves along the same streamlines the shader draws, and it does so by
+// construction rather than by resemblance: both are contours of a scalar field,
+// so a grain and the line it sits on cannot disagree about which way the flow
+// goes.
+//
+// Taking the curl of that field, rather than using it as a direction directly,
+// is the part that is not optional. A direction field has sources and sinks in
+// it, and dust released into one drains onto the sinks within seconds — the
+// first version of this did exactly that, and the field collapsed from an even
+// scatter into a handful of bright filaments that looked like scratches on the
+// lens. The curl of any scalar field is divergence-free, so nothing accumulates
+// anywhere and the distribution that was seeded stays the distribution.
+//
+// The field is specified as whole numbers of cycles across the wrapped domain
+// rather than as frequencies, and that is a correctness requirement, not a
+// convenience.
+//
+// Loose dust wraps at the edges of the canvas, so the space it lives in is a
+// torus. A flow that is divergence-free on the infinite plane is not
+// divergence-free on that torus unless it is also periodic over it: at the seam
+// the field jumps to an unrelated phase, and wherever the far side happens to
+// be flowing inward, everything that wraps into it stays. It is a sink made out
+// of nothing but a coordinate wrap, and it does not look like a subtle one —
+// measured over four simulated minutes, one 117px cell had collected 1100 of
+// the 1200 particles while its neighbours were empty.
+//
+// Integer cycle counts make the seam invisible to the field, so the torus is
+// exactly as incompressible as the plane. The y counts exceed the x counts
+// because the flow should run across the frame rather than up and down it: the
+// curl swaps them, so more cycles vertically means more speed horizontally.
+const DRIFT_CYCLES_X = 1;
+const DRIFT_CYCLES_Y = 2;
+const DRIFT_CYCLES_X2 = 2;
+const DRIFT_CYCLES_Y2 = 1;
+/** Peak drift speed, in the velocity units the integrator below uses. */
+const DRIFT_PEAK = 3.4;
+/**
+ * Converts the potential's gradient into a velocity, in the units below.
+ *
+ * A velocity the dust is *moved at*, not a force it is pushed with, and this
+ * distinction is the whole reason the field stays even.
+ *
+ * Both force versions were tried and both failed the same way. Feed the flow in
+ * as an acceleration, through the damped integrator the rest of the loop uses,
+ * and a grain's velocity always lags the field around it. Lagging tracers in an
+ * unsteady flow do not stay where they were put — they concentrate, the same
+ * way dust picks out the structure of a vortex — so the scatter drained into
+ * bright filaments that looked like scratches on the lens. Raising the gain so
+ * the lag was small only slowed it down. Measured as occupancy variance over a
+ * 16x9 grid, a uniform start at 0.36 reached 3.1 within four simulated minutes.
+ *
+ * Added to the position directly, a grain is a massless tracer: it has no lag
+ * to concentrate by, and an incompressible field moves it without ever changing
+ * how much of it is anywhere. The same measurement then stays flat.
+ */
 
 // --- fluid constants ---------------------------------------------------------
 /** Interaction radius, CSS pixels. Sets the spacing the mass settles at. */
@@ -345,6 +683,60 @@ const G_ATTRACT = 900000;
 const SOFTEN = 42;
 /** Velocity sharing between neighbours, which is what makes it read as liquid. */
 const K_VISCOSITY = 1.9;
+
+// --- the sequence -----------------------------------------------------------
+//
+// Beauty, control, attraction, compression, silence, rupture, afterglow. The
+// states are not seven separate effects; they are seven readings of two
+// numbers, `charge` and the clock since a rupture began. Everything the shaders
+// are told each frame is derived from those, which is what keeps the stages
+// continuous with each other instead of cutting between presets.
+//
+// The ordering principle is that the loudest moment is set up by the quietest
+// one. Compression narrows and brightens, Silence then removes the motion
+// entirely for a fifth of a second, and the rupture lands into that hole. Take
+// the silence out and the burst is merely bright; leave it in and it arrives.
+
+/** Seconds of unbroken hold from nothing to a fully compressed core. */
+const CHARGE_S = 2.6;
+/** How long the field takes to relax once the hand lets go. Slower than it
+ *  filled, so releasing reads as the pull easing rather than being cut. */
+const RELAX_S = 1.5;
+/** Charge above which Attraction has become Compression. */
+const COMPRESS_AT = 0.52;
+/**
+ * Charge a deliberate click needs before it will rupture anything.
+ *
+ * Without a floor here every click bursts, and a hero that detonates each time
+ * the user happens to pinch teaches them nothing about cause. Below this the
+ * click simply lets the gathered light disperse.
+ */
+const RUPTURE_AT = 0.45;
+/**
+ * The most a hold on its own may reach.
+ *
+ * Short of 1 on purpose. A hold that ruptures by itself turns every ordinary
+ * use of the pointer into a detonation — this page is also a working demo, and
+ * aiming at a button for two seconds is a thing visitors do constantly. So the
+ * hold does the gathering and the compressing, all the way to the edge, and the
+ * click is what tips it over. Both halves of the spec's condition are then
+ * real: you cannot rupture without having held, and you cannot rupture without
+ * having asked.
+ */
+const HOLD_CAP = 0.9;
+/** The held beat before the burst. */
+const SILENCE_S = 0.22;
+/** How long the rupture wave takes to cross the field. */
+const RUPTURE_S = 0.9;
+/**
+ * The fraction of the rupture spent collapsing further before anything leaves.
+ * A burst that starts by growing looks like an explosion; one that starts by
+ * pulling in even tighter looks like something failing under pressure, which is
+ * the causal read the whole sequence is built to earn.
+ */
+const IMPLODE = 0.08;
+/** Seconds of residue after the wave has passed, before Ambient resumes. */
+const AFTERGLOW_S = 2.4;
 
 const smoothstep = (edge0, edge1, x) => {
   const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
@@ -377,6 +769,7 @@ export class SpellField {
       this.pointProgram = link(gl, VERT, FRAG);
       this.quadProgram = link(gl, QUAD_VERT, QUAD_FRAG);
       this.rayProgram = link(gl, QUAD_VERT, RAY_FRAG);
+      this.flowProgram = link(gl, QUAD_VERT, FLOW_FRAG);
       this.brightProgram = link(gl, QUAD_VERT, BRIGHT_FRAG);
       this.blurProgram = link(gl, QUAD_VERT, BLUR_FRAG);
     } catch (e) {
@@ -469,6 +862,12 @@ export class SpellField {
     this.texture = gl.createTexture();
     this.bloomFbo = [gl.createFramebuffer(), gl.createFramebuffer()];
     this.bloomTex = [gl.createTexture(), gl.createTexture()];
+    // The flow is rendered at half linear resolution and scaled back up. It is
+    // a smooth image by construction, with no detail finer than a contour line,
+    // so the only thing full resolution buys is four times the fragment cost of
+    // a four-octave noise — on the same GPU that is running hand inference.
+    this.flowFbo = gl.createFramebuffer();
+    this.flowTex = gl.createTexture();
 
     this.uPointRes = gl.getUniformLocation(this.pointProgram, 'u_resolution');
     this.uPointExposure = gl.getUniformLocation(this.pointProgram, 'u_exposure');
@@ -481,6 +880,14 @@ export class SpellField {
     this.uRayTime = gl.getUniformLocation(this.rayProgram, 'u_time');
     this.uRayBurst = gl.getUniformLocation(this.rayProgram, 'u_burst');
     this.uRayExposure = gl.getUniformLocation(this.rayProgram, 'u_exposure');
+    this.uRayCompress = gl.getUniformLocation(this.rayProgram, 'u_compress');
+    this.uFlowRes = gl.getUniformLocation(this.flowProgram, 'u_resolution');
+    this.uFlowCenter = gl.getUniformLocation(this.flowProgram, 'u_center');
+    this.uFlowTime = gl.getUniformLocation(this.flowProgram, 'u_time');
+    this.uFlowPull = gl.getUniformLocation(this.flowProgram, 'u_pull');
+    this.uFlowCompress = gl.getUniformLocation(this.flowProgram, 'u_compress');
+    this.uFlowShock = gl.getUniformLocation(this.flowProgram, 'u_shock');
+    this.uFlowDim = gl.getUniformLocation(this.flowProgram, 'u_dim');
     this.uBrightTex = gl.getUniformLocation(this.brightProgram, 'u_tex');
     this.uBrightThreshold = gl.getUniformLocation(this.brightProgram, 'u_threshold');
     this.uBlurTex = gl.getUniformLocation(this.blurProgram, 'u_tex');
@@ -497,6 +904,33 @@ export class SpellField {
     this.burstCenter = null;
     this.absorbCarry = 0;
     this.scanFrom = 0;
+
+    // --- the sequence ------------------------------------------------------
+    /** One of ambient, detect, attract, compress, silence, rupture, afterglow. */
+    this.phase = 'ambient';
+    /** Seconds spent in phases that run on a clock rather than on charge. */
+    this.phaseClock = 0;
+    /** A rupture waiting behind the Silence beat, or null. */
+    this.armed = null;
+    /** 0..1. How much the hand has taken from the field. Drives everything. */
+    this.charge = 0;
+    /** How bent space is, 0..1. */
+    this.pull = 0;
+    /** How contracted it is, 0..1, and above 1 during the implosion. */
+    this.compression = 0;
+    /** Rupture wave position, 0..1 across its travel. 0 means no wave. */
+    this.shock = 0;
+    /** Overall exposure. Silence takes it down, the ignition flash spikes it. */
+    this.dim = 1;
+    /**
+     * The flow's own clock, in seconds of flow rather than seconds of wall.
+     * Compression runs it fast, Silence stops it, and because the shader only
+     * ever sees this number, neither state needs a branch in the shader.
+     */
+    this.flowTime = 0;
+    /** Where the field is centred, normalised, y down. */
+    this.focusX = 0.5;
+    this.focusY = 0.44;
 
     this.time = 0;
     this.width = 0;
@@ -604,6 +1038,30 @@ export class SpellField {
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.texture, 0);
 
+    // Whole cycles across the wrapped domain, which is the canvas plus the
+    // wrap margin at each edge. Recomputed here because it depends on the size.
+    const spanX = this.width + 40;
+    const spanY = this.height + 40;
+    const TAU = Math.PI * 2;
+    this.driftAx = (TAU * DRIFT_CYCLES_X) / spanX;
+    this.driftBy = (TAU * DRIFT_CYCLES_Y) / spanY;
+    this.driftAx2 = (TAU * DRIFT_CYCLES_X2) / spanX;
+    this.driftBy2 = (TAU * DRIFT_CYCLES_Y2) / spanY;
+    // Normalised so the fastest dust moves at the same visual speed whatever
+    // the canvas size; the curl's magnitude otherwise scales with frequency.
+    this.driftNorm = DRIFT_PEAK / (this.driftBy + 0.55 * this.driftBy2);
+
+    this.fw = Math.max(1, this.width >> 1);
+    this.fh = Math.max(1, this.height >> 1);
+    gl.bindTexture(gl.TEXTURE_2D, this.flowTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, this.fw, this.fh, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.flowFbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.flowTex, 0);
+
     this.bw = Math.max(1, this.width >> 2);
     this.bh = Math.max(1, this.height >> 2);
     for (let k = 0; k < 2; k++) {
@@ -656,13 +1114,198 @@ export class SpellField {
     }
   }
 
-  /** A click releases the gathered mass as one radial burst. */
+  /**
+   * A click asks the field to let go.
+   *
+   * Whether that is a rupture depends on how much was actually gathered. This
+   * is the one place the spec's "do not let them detonate it by accident" rule
+   * lives: under RUPTURE_AT there is no stored energy for a burst to be the
+   * consequence of, so the light simply disperses and the field carries on. A
+   * hero that explodes on every click is not teaching cause and effect, it is
+   * just loud.
+   *
+   * Above the threshold this does not fire either — it arms. The burst always
+   * arrives out of the Silence beat, never directly out of the click.
+   */
   release(x, y, strength = 1) {
     if (!this.supported) return;
-    const power = Math.min(1, Math.max(0, this.fill));
-    this.pendingRelease = { x: x * this.dpr, y: y * this.dpr, strength, power };
-    this.burstCenter = { x: x * this.dpr, y: y * this.dpr, strength, power };
+    if (this.phase === 'silence' || this.phase === 'rupture') return;
+    if (this.charge < RUPTURE_AT) {
+      this.pendingRelease = {
+        x: x * this.dpr,
+        y: y * this.dpr,
+        strength: 0.16,
+        power: Math.min(1, Math.max(0, this.fill)),
+        soft: true,
+      };
+      this.charge = Math.max(0, this.charge - 0.3);
+      return;
+    }
+    this._arm(x, y, strength);
+  }
+
+  /** Enter Silence with a rupture waiting behind it. Coordinates are CSS px. */
+  _arm(x, y, strength) {
+    this.phase = 'silence';
+    this.phaseClock = 0;
+    this.armed = { x, y, strength, power: Math.min(1, Math.max(0, this.fill)) };
+  }
+
+  /**
+   * Silence is over. The field starts failing — but nothing has left yet.
+   *
+   * The first slice of the rupture is spent collapsing further, and the mass
+   * has to still be there to be seen collapsing. Throwing the particles here,
+   * which is what this did originally, meant the core was already empty by the
+   * time the implosion was drawn: the shaders showed a contraction of nothing
+   * while the light was on its way out. `_burst` is deferred to the end of that
+   * beat so the sequence is inward, then outward, in that order.
+   */
+  _fire() {
+    this.phase = 'rupture';
+    this.phaseClock = 0;
+  }
+
+  /** The containment gives. Everything the hand took leaves at once. */
+  _burst() {
+    const a = this.armed;
+    this.armed = null;
+    if (!a) return;
+    const centre = { x: a.x * this.dpr, y: a.y * this.dpr, strength: a.strength, power: a.power };
+    this.pendingRelease = centre;
+    this.burstCenter = centre;
     this.releaseTime = this.time;
+  }
+
+  /**
+   * Move the sequence on by one frame.
+   *
+   * Six of the seven states are read straight off `charge`, which rises only
+   * while a gesture is actually held and falls back when it is not. That is
+   * deliberately the same number the user is building: there is no hidden timer
+   * deciding when the hero gets dramatic, so holding longer always means more,
+   * and letting go always means less. The two states that are not read off it —
+   * Silence and Rupture — are the ones that must run to completion once begun,
+   * so those get a clock.
+   *
+   * @param {number} d seconds, already clamped by the caller
+   */
+  _advance(d) {
+    const engaged = this.attractors.length > 0 && this.mode !== 'idle';
+
+    if (this.phase === 'silence') {
+      this.phaseClock += d;
+      if (this.phaseClock >= SILENCE_S) this._fire();
+    } else if (this.phase === 'rupture') {
+      this.phaseClock += d;
+      if (this.armed && this.phaseClock >= RUPTURE_S * IMPLODE) this._burst();
+      if (this.phaseClock >= RUPTURE_S) {
+        this.phase = 'afterglow';
+        this.phaseClock = 0;
+      }
+    } else if (this.phase === 'afterglow') {
+      this.phaseClock += d;
+      if (this.phaseClock >= AFTERGLOW_S) {
+        this.phase = engaged ? 'detect' : 'ambient';
+        this.phaseClock = 0;
+      }
+    } else {
+      this.charge = engaged
+        ? Math.min(HOLD_CAP, this.charge + d / CHARGE_S)
+        : Math.max(0, this.charge - d / RELAX_S);
+
+      if (this.charge > COMPRESS_AT) {
+        this.phase = 'compress';
+      } else if (this.charge > 0.015) {
+        this.phase = 'attract';
+      } else {
+        this.phase = engaged ? 'detect' : 'ambient';
+      }
+    }
+
+    this._derive(d);
+  }
+
+  /**
+   * Turn the current state into the handful of numbers the shaders take.
+   *
+   * Keeping this in one place is what stops the stages drifting apart: pull,
+   * compression, the wave and the exposure are always computed together from
+   * the same phase, so there is no way for the field to be bent one way while
+   * the core is lit as though it were bent another.
+   */
+  _derive(d) {
+    let speed = 1;
+
+    if (this.phase === 'rupture') {
+      const t = this.phaseClock / RUPTURE_S;
+      if (t < IMPLODE) {
+        // Still going inward. This is the beat that makes the burst legible as
+        // a failure of containment rather than as an explosion that happened to
+        // be placed here.
+        const k = t / IMPLODE;
+        this.compression = 1 + k * 0.42;
+        this.shock = 0;
+        // Picks up exactly where Silence left the exposure and keeps going
+        // down. Returning to 1 here put a bright frame between the held breath
+        // and the flash, which is the one place a bright frame must not be.
+        this.dim = 0.74 - k * 0.12;
+        speed = 0.15;
+      } else {
+        const w = (t - IMPLODE) / (1 - IMPLODE);
+        this.shock = w;
+        // The core does not fade, it is emptied: everything it held is now in
+        // the wave, so this has to fall much faster than the wave travels.
+        this.compression = Math.max(0, 1.42 - w * 4.6);
+        const flash = Math.exp(-Math.pow(w / 0.055, 2));
+        this.dim = 1 + flash * 2.8;
+        speed = 1 + 3.4 * (1 - w);
+      }
+      this.pull = Math.max(0, 1 - this.shock * 1.7);
+      this.charge = Math.max(0, this.charge - d / 0.35);
+    } else if (this.phase === 'silence') {
+      const k = this.phaseClock / SILENCE_S;
+      this.compression = 1;
+      this.shock = 0;
+      this.pull = 1;
+      // A quarter of a stop down and completely still. Both halves matter: the
+      // darkening alone reads as a dip, the stillness alone reads as a stall,
+      // and together they read as something about to give.
+      this.dim = 1 - 0.26 * smoothstep(0, 0.6, k);
+      speed = 0;
+    } else if (this.phase === 'afterglow') {
+      const k = this.phaseClock / AFTERGLOW_S;
+      this.compression = 0;
+      this.shock = 0;
+      this.pull = Math.max(0, this.pull - d / 0.8);
+      this.dim = 1 + 0.12 * (1 - k) * (1 - k);
+      // The flow reassembles rather than resuming: it comes back fast and eases
+      // to its ambient rate, so the field is visibly settling for a few seconds.
+      speed = 1 + 0.7 * (1 - k) * (1 - k);
+      this.charge = Math.max(0, this.charge - d / 0.6);
+    } else {
+      this.pull = smoothstep(0, COMPRESS_AT, this.charge);
+      // Anything present at all bends the field a little: a mouse before the
+      // camera is on, and a hand that is in frame but not yet gathering. That
+      // is State 1 — enough for the visitor to see that they have been noticed,
+      // and not so much that detection is mistaken for the effect itself.
+      //
+      // A floor rather than a separate mouse-only case. Written as a case it
+      // switched off the moment a gesture began, so the field relaxed to
+      // nothing for the first half second of the gather and the hand appeared
+      // to push before it pulled.
+      if (this.pointer) this.pull = Math.max(this.pull, 0.30);
+      this.compression = smoothstep(COMPRESS_AT, 1, this.charge);
+      this.shock = 0;
+      this.dim = 1;
+      // Wide, pale and slow becomes narrow, bright and fast. The acceleration
+      // is squared so that almost all of it happens in the last third of the
+      // hold, where it can be felt against the calm that preceded it.
+      speed = 1 + this.pull * 0.5 + this.compression * this.compression * 4.5;
+    }
+
+    if (this.reducedMotion) speed *= 0.32;
+    this.flowTime += d * speed;
   }
 
   /** Bucket the captured particles so the fluid can find neighbours cheaply. */
@@ -810,10 +1453,23 @@ export class SpellField {
     const elapsed = Math.max(0, Math.min(dt, 0.1));
     const d = Math.min(elapsed, 1 / 30);
     this.time += d;
+    this._advance(d);
+
+    // Where the field is centred. It chases the pointer rather than tracking
+    // it, and that lag is the point: the cursor is weightless and the space
+    // around it is not, so the same input produces an immediate cursor and a
+    // slow, heavy wake. Matching them exactly made the whole page feel like a
+    // texture pinned to the mouse.
+    const focus = this.attractors.length > 0 ? this.attractors[0] : this.pointer;
+    if (focus) {
+      const k = Math.min(1, d * 6.5);
+      this.focusX += (focus.x / Math.max(1, this.width) - this.focusX) * k;
+      this.focusY += (focus.y / Math.max(1, this.height) - this.focusY) * k;
+    }
+
     const active = this.active;
     this._rebalance(d, active);
 
-    const t = this.time;
     const dpr = this.dpr;
     const motion = this.reducedMotion ? 0.3 : 1;
     const grabbing = this.mode === 'grab';
@@ -845,6 +1501,15 @@ export class SpellField {
     const width = this.width;
     const height = this.height;
     const pointer = this.pointer;
+    // The flow's clock, not the wall clock: the dust must slow, stop and
+    // restart with the streamlines it is suspended in, or Silence has still
+    // motion in the background of it.
+    const flowT = this.flowTime;
+    const driftAx = this.driftAx;
+    const driftBy = this.driftBy;
+    const driftAx2 = this.driftAx2;
+    const driftBy2 = this.driftBy2;
+    const driftNorm = this.driftNorm;
 
     // The attractors flattened into plain numbers. There are at most three, but
     // the loop below reads them once per particle, and `attractors[a].x` is an
@@ -872,7 +1537,14 @@ export class SpellField {
     // How far the hand's influence extends, and how far a particle may stray
     // before it is shed.
     const visualFill = Math.min(this.fill, 1 / 3);
-    const spread = (14 + 23 * Math.sqrt(visualFill)) * (grabbing ? 0.82 : 1) * dpr;
+    // Compression is a radius, not a brightness. The mass is packed into a
+    // smaller volume and its own density does the rest — the fluid below is
+    // already lighting particles by how close their neighbours are, so halving
+    // the radius raises the core's luminance without a single term here saying
+    // "get brighter". Light that is bright because it is dense looks like
+    // compressed energy; light that is bright because a number went up does not.
+    const squeeze = 1 - Math.min(1.42, this.compression) * 0.46;
+    const spread = (14 + 23 * Math.sqrt(visualFill)) * (grabbing ? 0.82 : 1) * squeeze * dpr;
     this.spread = spread;
     const grip = spread + (grabbing ? 60 : 84) * dpr;
     const reach = (grabbing ? 250 : 320) * (regathering ? 1.5 : 1) * dpr;
@@ -889,6 +1561,7 @@ export class SpellField {
 
     const release = this.pendingRelease;
     this.pendingRelease = null;
+    const stillness = this.phase === 'silence' ? 0.86 : 1;
 
     // ---- neighbour grid over what is currently captured --------------------
     let nCaptured = 0;
@@ -931,10 +1604,32 @@ export class SpellField {
 
       // Ambient drift, slow: any motion a visitor notices should be motion
       // their own hand caused.
-      const angle = Math.sin(px[i] * 0.0015 + t * 0.2 + s * 6.28) +
-                    Math.cos(py[i] * 0.0013 - t * 0.16 + s * 3.14);
-      let ax = replenishing ? 0 : Math.cos(angle * 2.1) * 5 * motion;
-      let ay = replenishing ? 0 : Math.sin(angle * 2.1) * 5 * motion;
+      //
+      // The per-particle seed that used to be in here is gone, and its absence
+      // is the difference between dust and a swarm: with it, every grain picked
+      // its own direction and the field milled, which is what insects look
+      // like. Neighbours now agree, so the dust travels along the flow instead
+      // of within it. See DRIFT_* above for why this is a curl and not simply
+      // a direction.
+      const dxa = px[i] * driftAx + flowT * 0.050;
+      const dyb = py[i] * driftBy - flowT * 0.040;
+      const dxa2 = px[i] * driftAx2 - flowT * 0.031;
+      const dyb2 = py[i] * driftBy2 + flowT * 0.024;
+      // d(psi)/dy and d(psi)/dx of sin(ax)cos(by), two harmonics.
+      const dPsiDy = -driftBy * Math.sin(dxa) * Math.sin(dyb)
+        - 0.55 * driftBy2 * Math.sin(dxa2) * Math.sin(dyb2);
+      const dPsiDx = driftAx * Math.cos(dxa) * Math.cos(dyb)
+        + 0.55 * driftAx2 * Math.cos(dxa2) * Math.cos(dyb2);
+      // Only loose dust rides the flow. Captured light belongs to the hand,
+      // and light in flight from a burst is on a ballistic path of its own.
+      const carried = !replenishing && !bound[i] && returning[i] === 0;
+      const drift = carried ? driftNorm * motion : 0;
+      const driftX = dPsiDy * drift;
+      const driftY = -dPsiDx * drift;
+      // `vx`/`vy` now carry only what is *disturbing* a grain — the mouse, a
+      // burst — and damp back to nothing, leaving it on the flow again.
+      let ax = 0;
+      let ay = 0;
       let cursorLight = 0;
 
       // Before hand tracking starts, the mouse only ripples nearby ambient
@@ -1108,9 +1803,12 @@ export class SpellField {
         vy[i] = dirY * speed;
         bound[i] = 0;
         held[i] = 0;
-        heat[i] = 0.20 + release.power * 0.80;
-        returning[i] = RETURN_S;
-        bursting[i] = 1;
+        // A dissipation is not a small burst. It has no heat and leaves no
+        // trailing ember, so what the eye sees is light being handed back to
+        // the field rather than thrown out of it.
+        heat[i] = release.soft ? 0 : 0.20 + release.power * 0.80;
+        returning[i] = release.soft ? RETURN_S * 0.35 : RETURN_S;
+        bursting[i] = release.soft ? 0 : 1;
         if (inMass) massCount--;
         boundCount--;
         inMass = false;
@@ -1158,7 +1856,9 @@ export class SpellField {
               : 0.935;
       // The original values are per 60 Hz frame. Make them time-correct so a
       // missed frame does not also remove most of the damping for that period.
-      const damp = Math.pow(dampPerFrame, d * 60);
+      // Silence stops the field rather than slowing it: the contrast the
+      // rupture lands against is made here.
+      const damp = Math.pow(dampPerFrame * stillness, d * 60);
       vx[i] = replenishing ? 0 : (vx[i] + ax * d) * damp;
       vy[i] = replenishing ? 0 : (vy[i] + ay * d) * damp;
 
@@ -1168,8 +1868,8 @@ export class SpellField {
         vx[i] = (vx[i] / speed) * cap;
         vy[i] = (vy[i] / speed) * cap;
       }
-      px[i] += vx[i] * d * 34;
-      py[i] += vy[i] * d * 34;
+      px[i] += (vx[i] + driftX) * d * 34;
+      py[i] += (vy[i] + driftY) * d * 34;
 
       // Loose dust wraps with its overshoot intact. Large-scale empty areas are
       // repaired by _rebalance(), through light fading in rather than motion.
@@ -1223,7 +1923,8 @@ export class SpellField {
       const burstGlow = bursting[i] * heat[i];
       // Even ambient dust needs enough physical pixels for a radial gradient.
       // A 2px sprite can only look like a hard dot regardless of the shader.
-      sizes[i] = (3.4 + s * 1.8 + warm * 11.5 + ember * 2.0 + burstGlow * 5.0 + cursorLight * 5.0) * dpr;
+      sizes[i] = (2.6 + s * s * 2.6 + held[i] * 9.5 + heat[i] * 2.4
+        + ember * 2.0 + burstGlow * 2.2 + cursorLight * 5.0) * dpr;
 
       // A merged particle contributes very little on its own. Hundreds of them
       // overlapping is what produces the light, so the saturated core stays
@@ -1233,7 +1934,17 @@ export class SpellField {
       // are what make the light, so the saturated core stays small and
       // everything outside it is a smooth density gradient.
       const hotness = smoothstep(12, 28, density[i]);
-      const brightness = 0.40 * (1 - warm) + warm * (0.05 + hotness * 0.115) + ember * 0.55 + burstGlow * 0.38 + cursorLight * 0.62;
+      // Dimmer than it was, because it is no longer carrying the picture. At
+      // the old value the highlights sat on top of the streamlines and read as
+      // a separate particle layer laid over them instead of as glints within.
+      // Graded by seed rather than flat, and squared so the distribution is
+      // bottom-heavy: most of the dust is barely there and a few grains carry
+      // real light. A field where every grain is equally bright has a texture,
+      // and a texture at this density reads as a swarm however slowly it moves.
+      // Unevenness is what turns the same points into glints inside the volume.
+      const glint = 0.05 + s * s * 0.27;
+      const brightness = glint * (1 - warm) + warm * (0.05 + hotness * 0.115)
+        + ember * 0.55 + burstGlow * 0.22 + cursorLight * 0.62;
       const tone = Math.max(warm, ember, cursorLight);
       for (let c = 0; c < 3; c++) {
         const tint = HOT[c] * (1 - hotness) + WHITE[c] * hotness;
@@ -1306,6 +2017,26 @@ export class SpellField {
     if (!this.supported) return;
     const gl = this.gl;
 
+    // ---- the field ---------------------------------------------------------
+    // Drawn first and at half resolution, into its own buffer. Everything after
+    // this point is light *in* the field rather than light beside it, which is
+    // why the flow goes down before the highlights and both go through the same
+    // bloom: two separately glowing layers composited at the end never belong
+    // to one another.
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.flowFbo);
+    gl.viewport(0, 0, this.fw, this.fh);
+    gl.disable(gl.BLEND);
+    gl.useProgram(this.flowProgram);
+    gl.uniform2f(this.uFlowRes, this.fw, this.fh);
+    gl.uniform2f(this.uFlowCenter, this.focusX, this.focusY);
+    gl.uniform1f(this.uFlowTime, this.flowTime);
+    gl.uniform1f(this.uFlowPull, this.pull);
+    gl.uniform1f(this.uFlowCompress, Math.min(1, this.compression));
+    gl.uniform1f(this.uFlowShock, this.shock);
+    gl.uniform1f(this.uFlowDim, this.dim);
+    gl.bindVertexArray(this.quadVao);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
     gl.viewport(0, 0, this.width, this.height);
 
@@ -1319,9 +2050,18 @@ export class SpellField {
 
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.ONE, gl.ONE);
+    gl.useProgram(this.quadProgram);
+    gl.uniform1i(this.uQuadTex, 0);
+    gl.uniform1f(this.uQuadAlpha, 1.0);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.flowTex);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+
     gl.useProgram(this.pointProgram);
     gl.uniform2f(this.uPointRes, this.width, this.height);
-    gl.uniform1f(this.uPointExposure, NO_TRAIL_EXPOSURE);
+    // The highlights live in the same exposure as the field, so Silence dims
+    // them too and the ignition flash blows them out with everything else.
+    gl.uniform1f(this.uPointExposure, NO_TRAIL_EXPOSURE * Math.min(1.8, this.dim));
     gl.bindVertexArray(this.vao);
 
     gl.bindBuffer(gl.ARRAY_BUFFER, this.posBuffer);
@@ -1350,9 +2090,12 @@ export class SpellField {
       gl.uniform2f(this.uRayRes, this.width, this.height);
       gl.uniform1f(this.uRayTime, this.time);
       gl.uniform1f(this.uRayCharge, visibleCharge / Math.sqrt(this.attractors.length));
+      // Follows the same contraction as the mass, so the rays tighten into the
+      // core instead of hanging around it at their gathering size.
       gl.uniform1f(this.uRayRadius, Math.min(this.spread || 22, 28 * this.dpr));
       gl.uniform1f(this.uRayBurst, 0);
-      gl.uniform1f(this.uRayExposure, NO_TRAIL_EXPOSURE);
+      gl.uniform1f(this.uRayExposure, NO_TRAIL_EXPOSURE * Math.min(1.8, this.dim));
+      gl.uniform1f(this.uRayCompress, Math.min(1, this.compression));
       gl.bindVertexArray(this.quadVao);
       for (const a of this.attractors) {
         gl.uniform2f(this.uRayCenter, a.x, a.y);
@@ -1375,7 +2118,8 @@ export class SpellField {
       gl.uniform1f(this.uRayCharge, Math.max(0.015, envelope * visiblePower));
       gl.uniform1f(this.uRayTime, this.time);
       gl.uniform1f(this.uRayBurst, phase);
-      gl.uniform1f(this.uRayExposure, NO_TRAIL_EXPOSURE);
+      gl.uniform1f(this.uRayExposure, NO_TRAIL_EXPOSURE * Math.min(1.8, this.dim));
+      gl.uniform1f(this.uRayCompress, 0);
       gl.bindVertexArray(this.quadVao);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     }

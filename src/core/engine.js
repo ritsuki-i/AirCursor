@@ -386,12 +386,15 @@ export class AirCursorEngine {
     this.lastFrameTime = now;
 
     this._step(now, dt);
-    this.scroller.tick(dt);
-
-    this.rafId = requestAnimationFrame(this._loop);
+    // A synthetic click may invoke the consumer's Stop button inside _step.
+    if (this.running) {
+      this.scroller.tick(dt);
+      this.rafId = requestAnimationFrame(this._loop);
+    }
   }
 
   _step(nowMs, dt) {
+    const sessionWasRunning = this.running;
     const latest = this.latest;
     const hand = latest && latest.state.dominant;
     const landmarks = latest && latest.state.dominantLandmarks;
@@ -479,6 +482,7 @@ export class AirCursorEngine {
     const modifier = this.options.modifierEnabled && latest.state.modifier;
 
     this.pointer.move(x, y);
+    if (sessionWasRunning && !this.running) return;
 
     // Framing needs both hands pinched, and a dominant-hand pinch on its own is
     // already the scroll gesture — so by the time the off hand joins, a scroll
@@ -525,6 +529,8 @@ export class AirCursorEngine {
       }
       this.contextMenuFired = false;
     }
+
+    if (sessionWasRunning && !this.running) return;
 
     // ---- grab scroll -----------------------------------------------------
     if (scrollSuppressed) {

@@ -60,6 +60,13 @@ function firstCommonAncestor(chainA, chainB) {
   return null;
 }
 
+function isDisabledTarget(target) {
+  // :disabled on the actual control respects a fieldset's first-legend
+  // exception. Merely finding a disabled ancestor would block enabled controls.
+  const control = target?.closest?.('button, input, select, textarea, option, optgroup');
+  return !!(control?.matches(':disabled') || target?.closest?.('[inert]'));
+}
+
 /**
  * Topmost element at a viewport point, descending into open shadow roots so
  * that web components are addressable.
@@ -235,6 +242,9 @@ export class VirtualPointer {
     if (this.pressed) return;
     const target = hitTest(this.x, this.y);
     this._setHover(target);
+    // dispatchEvent bypasses the browser's disabled-control input suppression.
+    // A hand must not activate a button a mouse cannot activate.
+    if (isDisabledTarget(target)) return;
     this.pressed = true;
     this.pressButton = button;
     this.pressTarget = target;
@@ -259,10 +269,13 @@ export class VirtualPointer {
     this.pressButton = 0;
     this.pressTarget = null;
 
-    this._dispatchPointer(upTarget || downTarget, 'pointerup', { button, buttons: 0 });
-    this._dispatchMouse(upTarget || downTarget, 'mouseup', { button, buttons: 0 });
+    // Moves are captured to the pressed element; release must reach it too.
+    // Otherwise a drag handler attached to its own handle stays stuck forever
+    // when the user releases outside that handle.
+    this._dispatchPointer(downTarget || upTarget, 'pointerup', { button, buttons: 0 });
+    this._dispatchMouse(downTarget || upTarget, 'mouseup', { button, buttons: 0 });
 
-    if (!downTarget || !upTarget) return;
+    if (!downTarget || !upTarget || isDisabledTarget(downTarget) || isDisabledTarget(upTarget)) return;
 
     // Per the UI Events spec, click fires on the nearest common inclusive
     // ancestor of the press and release targets.
