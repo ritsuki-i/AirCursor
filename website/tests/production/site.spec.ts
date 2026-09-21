@@ -27,6 +27,10 @@ test('production galaxy, languages, resources and demo controls', async ({ page,
     });
   })).toBe(true);
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://ritsuki-i.github.io/AirCursor/');
+  await expect(page.locator('meta[property="og:image"]')).toHaveAttribute('content', 'https://ritsuki-i.github.io/AirCursor/assets/og-image.png');
+  await expect(page.locator('meta[property="og:image:width"]')).toHaveAttribute('content', '1734');
+  await expect(page.locator('meta[property="og:image:height"]')).toHaveAttribute('content', '907');
+  await expect(page.locator('meta[name="twitter:image"]')).toHaveAttribute('content', 'https://ritsuki-i.github.io/AirCursor/assets/og-image.png');
   await page.locator('#galaxy-pause').click();
   await expect(page.locator('#galaxy-pause')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('.hero')).toHaveAttribute('data-phase', /ambient|detection/);

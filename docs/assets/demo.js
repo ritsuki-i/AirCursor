@@ -291,13 +291,17 @@ async function startTracking() {
   engine = sessionEngine;
 
   try {
-    await sessionEngine.start();
-    if (engine !== sessionEngine || document.hidden) { sessionEngine.stop(); return; }
-    running = true;
+    // Mark the expensive one-time camera/model startup before awaiting it so
+    // the galaxy's adaptive controller does not mistake that spike for a
+    // permanently slow device.
     field.setTracking(true);
+    await sessionEngine.start();
+    if (engine !== sessionEngine || document.hidden) { sessionEngine.stop(); field.setTracking(false); return; }
+    running = true;
     trackConversion('demo_started');
   } catch (error) {
     running = false;
+    field.setTracking(false);
     sessionEngine.stop();
     if (engine !== sessionEngine) return;
     engine = null;

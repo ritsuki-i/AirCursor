@@ -23,7 +23,7 @@ export class WebGLFieldRenderer implements FieldRenderer {
   private cloud: WebGLTexture;
 
   constructor(private canvas: HTMLCanvasElement | OffscreenCanvas) {
-    const gl = canvas.getContext("webgl", { alpha: false, antialias: false, depth: false, powerPreference: "low-power" }) as WebGLRenderingContext | null;
+    const gl = canvas.getContext("webgl", { alpha: false, antialias: false, depth: false, powerPreference: "high-performance" }) as WebGLRenderingContext | null;
     if (!gl) throw new Error("WebGL unavailable");
     this.gl = gl;
     this.points = this.createProgram(pointVertex, pointFragment, ["aspect", "dpr", "height", "time", "reduced", "cloud"], ["position", "style", "pulse"]);

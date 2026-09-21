@@ -19,15 +19,20 @@ export class GalaxyScene {
   private dpr = 1;
   private quality = 1;
   private slow = 0;
+  private fast = 0;
   private pressure = 0;
+  renderScale = 1;
   constructor(readonly renderer: FieldRenderer, width: number, height: number, readonly fallback = false) {
     this.particles = new ParticleField(fallback ? FALLBACK_BUDGET : width < 650 ? MOBILE_BUDGET : DESKTOP_BUDGET, width / height);
   }
   resize(width = this.width, height = this.height, dpr = this.dpr) {
     this.width = Math.max(1, width); this.height = Math.max(1, height); this.dpr = dpr;
     this.particles.aspect = this.width / this.height;
-    const pixels = (this.tracking ? 700_000 : 1_100_000) / (1 + this.pressure * .65);
-    this.renderer.resize(this.width, this.height, this.quality * Math.min(dpr, 1.25, Math.sqrt(pixels / (this.width * this.height))));
+    // Camera startup no longer forces a lower-resolution canvas. Start from
+    // the same pixel budget and let measured GPU/main-thread pressure adapt it.
+    const pixels = 1_100_000 / (1 + this.pressure * .28);
+    this.renderScale = this.quality * Math.min(dpr, 1.25, Math.sqrt(pixels / (this.width * this.height)));
+    this.renderer.resize(this.width, this.height, this.renderScale);
     this.dirty = true;
   }
   update(data: SceneUpdate) {
@@ -52,8 +57,8 @@ export class GalaxyScene {
   }
   frame(now: number) {
     if (!this.visible || ((this.paused || this.reduced) && !this.dirty)) { this.previous = 0; return false; }
-    const fps = this.fallback ? 24 : this.tracking ? 30 : 60;
-    const interval = 1000 / Math.max(20, fps - this.pressure * 12);
+    const fps = this.fallback ? 24 : this.tracking ? 45 : 60;
+    const interval = 1000 / Math.max(24, fps - this.pressure * 8);
     if (!this.dirty && now - this.previous < interval - 1) return false;
     const delta = this.previous ? Math.min((now - this.previous) / 1000, .05) : 1 / 60;
     this.previous = now;
@@ -69,8 +74,17 @@ export class GalaxyScene {
     this.renderer.draw(this.particles, this.state, this.reduced);
     this.dirty = false;
     const cost = performance.now() - start;
-    this.slow = cost > interval * .8 ? this.slow + 1 : Math.max(0, this.slow - 1);
-    if (this.slow > 15 && this.quality > .6) { this.quality *= .85; this.resize(); this.slow = 0; }
+    if (cost > interval * .82) {
+      this.slow++; this.fast = 0;
+    } else {
+      this.slow = Math.max(0, this.slow - 1);
+      this.fast = cost < interval * .5 ? this.fast + 1 : Math.max(0, this.fast - 1);
+    }
+    if (this.slow > 30 && this.quality > .75) {
+      this.quality = Math.max(.75, this.quality * .9); this.resize(); this.slow = 0; this.fast = 0;
+    } else if (this.fast > 180 && this.quality < 1) {
+      this.quality = Math.min(1, this.quality + .05); this.resize(); this.slow = 0; this.fast = 0;
+    }
     return true;
   }
 }

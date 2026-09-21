@@ -18,7 +18,9 @@ export class GalaxyField {
   private tracking = false;
   private visible = true;
   private pressure = 0;
-  private slowFrames = 0;
+  private slowTime = 0;
+  private healthyTime = 0;
+  private adaptAfter = 0;
   private readyTimer: ReturnType<typeof setTimeout> | undefined;
   constructor(private canvas: HTMLCanvasElement, options: { reducedMotion: boolean }) {
     this.reduced = options.reducedMotion;
@@ -29,7 +31,7 @@ export class GalaxyField {
         this.worker.onmessage = ({ data }) => {
           if (data.type === 'fallback') this.fallback();
           else if (data.type === 'ready') { clearTimeout(this.readyTimer); canvas.parentElement!.dataset.renderer = 'webgl-worker'; }
-          else if (data.type === 'state') Object.assign(canvas.parentElement!.dataset, { phase: data.phase, fieldX: Number(data.x).toFixed(3), fieldY: Number(data.y).toFixed(3), particles: String(data.particles), renderFps: String(data.fps) });
+          else if (data.type === 'state') Object.assign(canvas.parentElement!.dataset, { phase: data.phase, fieldX: Number(data.x).toFixed(3), fieldY: Number(data.y).toFixed(3), particles: String(data.particles), renderFps: String(data.fps), renderScale: Number(data.scale).toFixed(3) });
         };
         this.worker.onerror = () => this.fallback();
         const surface = canvas.transferControlToOffscreen();
@@ -74,16 +76,35 @@ export class GalaxyField {
   setAttractors(points: Point[] | null, _mode?: string) { if (points?.length) this.setPointer(points[0]); this.input.pressed = !!points?.length && this.input.detected; }
   release(_x: number, _y: number, _strength = 1) { this.input.pressed = false; this.pending.release = true; }
   play() { this.pending.play = true; }
-  setTracking(tracking: boolean) { this.tracking = tracking; }
+  setTracking(tracking: boolean) {
+    if (tracking === this.tracking) return;
+    this.tracking = tracking;
+    this.slowTime = 0;
+    this.healthyTime = 0;
+    // Camera/model startup is a one-time task and says nothing about steady
+    // interaction performance. Do not permanently lower quality because of it.
+    this.adaptAfter = performance.now() + (tracking ? 4000 : 1000);
+  }
   setVisible(visible: boolean) { this.visible = visible; this.render(); }
   setReducedMotion(reduced: boolean) { this.reduced = reduced; }
   step(delta: number) {
     // React to the input thread, not just worker CPU time: the two still
     // share a GPU, especially on integrated graphics and software renderers.
     if (this.paused || this.reduced || !this.visible) return;
-    this.slowFrames = delta > .035 ? this.slowFrames + 1 : Math.max(0, this.slowFrames - .2);
-    if (this.slowFrames > 8 && this.pressure < 3) {
-      this.pressure++; this.slowFrames = 0;
+    if (performance.now() < this.adaptAfter) return;
+    const dt = Math.min(delta, .1);
+    if (delta > .045) {
+      this.slowTime += dt;
+      this.healthyTime = 0;
+    } else {
+      this.slowTime = Math.max(0, this.slowTime - dt * .5);
+      this.healthyTime = delta < .028 ? this.healthyTime + dt : Math.max(0, this.healthyTime - dt);
+    }
+    if (this.slowTime > .8 && this.pressure < 3) {
+      this.pressure++; this.slowTime = 0; this.healthyTime = 0;
+      this.canvas.parentElement!.dataset.quality = String(this.pressure);
+    } else if (this.healthyTime > 8 && this.pressure > 0) {
+      this.pressure--; this.slowTime = 0; this.healthyTime = 0;
       this.canvas.parentElement!.dataset.quality = String(this.pressure);
     }
   }
@@ -94,6 +115,6 @@ export class GalaxyField {
       this.worker?.postMessage(data); this.scene?.update(data);
       this.sent = serialized; this.pending = {};
     }
-    if (this.scene?.frame(performance.now())) Object.assign(this.canvas.parentElement!.dataset, { phase: this.scene.state.phase, fieldX: this.scene.state.x.toFixed(3), fieldY: this.scene.state.y.toFixed(3), particles: String(this.scene.particles.lights.length) });
+    if (this.scene?.frame(performance.now())) Object.assign(this.canvas.parentElement!.dataset, { phase: this.scene.state.phase, fieldX: this.scene.state.x.toFixed(3), fieldY: this.scene.state.y.toFixed(3), particles: String(this.scene.particles.lights.length), renderScale: this.scene.renderScale.toFixed(3) });
   }
 }

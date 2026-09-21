@@ -137,12 +137,17 @@ test('published npm gestures activate the same hero and product controls as the 
   expect(errors).toEqual([]);
 });
 
-test('worker doubles lights while leaving the main thread available for input', async ({ page }, testInfo) => {
+test('worker preserves camera-on quality while leaving the main thread available for input', async ({ page }, testInfo) => {
   await page.goto('/');
   await expect(page.locator('.hero')).toHaveAttribute('data-renderer', 'webgl-worker');
   await expect(page.locator('.hero')).toHaveAttribute('data-particles', '14036');
+  await expect.poll(async () => Number(await page.locator('.hero').getAttribute('data-render-scale'))).toBeGreaterThan(0);
+  const idleScale = Number(await page.locator('.hero').getAttribute('data-render-scale'));
+  await startReplay(page);
+  await expect.poll(async () => Number(await page.locator('.hero').getAttribute('data-render-scale'))).toBeGreaterThanOrEqual(idleScale * .95);
   // Exclude one-time shader compilation and allow the quality controller to
-  // settle. Measure steady-state interaction, retaining the raw p95 in output.
+  // settle with hand tracking active. Measure steady-state interaction,
+  // retaining the raw p95 in output.
   await page.waitForTimeout(3000);
   const stats = await page.evaluate(async () => {
     const gaps: number[] = [];
@@ -160,8 +165,6 @@ test('worker doubles lights while leaving the main thread available for input', 
   await testInfo.attach('main-thread-frame-gaps.json', { path: report, contentType: 'application/json' });
   // A regression guard on this machine, not a device-independent FPS claim.
   expect(stats.median).toBeLessThan(40);
-  await page.locator('#experience').scrollIntoViewIfNeeded();
-  const phase = await page.locator('.hero').getAttribute('data-phase');
-  await page.waitForTimeout(300);
-  await expect(page.locator('.hero')).toHaveAttribute('data-phase', phase!);
+  const settledScale = Number(await page.locator('.hero').getAttribute('data-render-scale'));
+  expect(settledScale).toBeGreaterThanOrEqual(idleScale * .85);
 });

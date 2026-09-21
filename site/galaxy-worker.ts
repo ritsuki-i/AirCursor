@@ -17,7 +17,7 @@ function frame() {
   if (scene.frame(now)) frames++;
   if (scene.state.phase !== phase || now - reportAt >= 1000) {
     phase = scene.state.phase;
-    self.postMessage({ type: 'state', phase, x: scene.state.x, y: scene.state.y, particles: scene.particles.lights.length, fps: Math.round(frames * 1000 / Math.max(1, now - reportAt)) });
+    self.postMessage({ type: 'state', phase, x: scene.state.x, y: scene.state.y, particles: scene.particles.lights.length, fps: Math.round(frames * 1000 / Math.max(1, now - reportAt)), scale: scene.renderScale });
     reportAt = now; frames = 0;
   }
   if (scene.visible && !scene.paused && !scene.reduced) schedule(scene.tracking ? 16 : 8);
