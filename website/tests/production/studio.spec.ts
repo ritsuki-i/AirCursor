@@ -6,7 +6,7 @@ test('studio generates a working customized published React component', async ({
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-  await page.goto('/studio.html');
+  await page.goto('/studio.html?lang=ja');
   await page.locator('#selected').selectOption('button');
   await page.locator('#element-text').fill('始めよう');
   await page.locator('#color').fill('#123456');
@@ -39,10 +39,41 @@ test('studio generates a working customized published React component', async ({
 
 test('studio supports small screens and resetting', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/studio.html');
+  await page.goto('/studio.html?lang=ja');
   await page.locator('#element-text').fill('変更');
   await expect(page.locator('[data-element="title"]')).toHaveText('変更');
   await page.locator('#reset').click();
   await expect(page.locator('[data-element="title"]')).toContainText('Webをもっと自由に');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test('language entry, switching and edited text', async ({ page }) => {
+  await page.goto('/studio.html');
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+  await expect(page.locator('[data-element="title"]')).toContainText('Move the Web');
+  await expect(page.locator('#code')).toContainText('enLabels');
+  await page.locator('#element-text').fill('My own title');
+  await page.locator('#language').selectOption('ja');
+  await expect(page.locator('html')).toHaveAttribute('lang', 'ja');
+  await expect(page.locator('[data-element="title"]')).toHaveText('My own title');
+  await expect(page.locator('[data-element="button"] button')).toHaveText('ハンド操作を開始');
+  await expect(page.locator('#code')).toContainText('jaLabels');
+  await page.locator('#language').selectOption('en');
+  await expect(page.locator('[data-element="title"]')).toHaveText('My own title');
+  await expect(page.locator('[data-element="button"] button')).toHaveText('Enable hand control');
+  await page.goto('/studio.html?lang=ja');
+  await expect(page.locator('html')).toHaveAttribute('lang', 'ja');
+  await expect(page.locator('[data-element="title"]')).toContainText('Webをもっと自由に');
+  await page.goto('/studio.html?lang=en');
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+});
+
+test('demo links to the studio in the currently selected language', async ({ page }) => {
+  await page.goto('/');
+  const link = page.locator('a[href^="./studio.html"], a[href*="/studio.html?"]');
+  await expect(link).toHaveAttribute('href', /lang=en/);
+  await page.locator('#language-toggle').click();
+  await expect(link).toHaveAttribute('href', /lang=ja/);
+  await link.click();
+  await expect(page.locator('html')).toHaveAttribute('lang', 'ja');
 });

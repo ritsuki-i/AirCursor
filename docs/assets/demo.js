@@ -182,6 +182,8 @@ let currentStatus = 'Move your mouse to stir the field. Enable hand tracking to 
 
 function applyLanguage() {
   document.documentElement.lang = currentLanguage;
+  const studioLink = document.querySelector('a[href^="./studio.html"]');
+  if (studioLink) studioLink.href = `./studio.html?lang=${currentLanguage}`;
   els.language.textContent = currentLanguage === 'en' ? '日本語' : 'English';
   els.language.setAttribute('aria-label', currentLanguage === 'en' ? '日本語に切り替える' : 'Switch to English');
   els.cast.textContent = running

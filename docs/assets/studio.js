@@ -1,3 +1,4 @@
+import { englishLabels, englishElements, translate, initialLanguage, collectTranslations, applyTranslations } from './studio-i18n.js';
 const $ = (id) => document.getElementById(id);
 const labelNames = { start:'開始ボタン', stop:'停止ボタン', dialogTitle:'説明の見出し', grab:'スクロールの説明', aim:'ポインターの説明', click:'クリックの説明', rightClick:'右クリックの説明', confirm:'確認チェック', showPreview:'プレビューのチェック', previewPosition:'プレビュー位置', begin:'ダイアログの開始ボタン', close:'閉じるボタンの説明', cameraError:'カメラのエラー' };
 const defaults = {
@@ -10,7 +11,9 @@ const defaults = {
   labels:{start:'ハンド操作を開始',stop:'ハンド操作を停止',dialogTitle:'手でこのページを操作する',grab:'親指と人差し指をつまんで手を動かすとスクロールします。',aim:'人差し指と中指を合わせるとポインターが動きます。',click:'ポインターを出したまま親指を合わせるとクリックします。保持するとドラッグになります。',rightClick:'反対の手を握ると、次のクリックが右クリックになります。',confirm:'操作説明を確認しました',showPreview:'カメラ映像を表示する',previewPosition:'カメラ映像の位置',begin:'開始',close:'閉じる',cameraError:'カメラを開始できませんでした。カメラの使用が許可されているか確認してください。'},
   options:{dominantHand:'right',previewPosition:'bottom-right',inferenceFps:30,cameraWidth:640,cameraHeight:480,scrollGain:2.2,showPreview:false,modifierEnabled:true,regionSelectEnabled:true,horizontal:true,skipConsent:false,autoStart:false,rememberSession:true}
 };
-let state = structuredClone(defaults);
+let language = initialLanguage();
+const defaultsFor = lang => { const result = structuredClone(defaults); if (lang === 'en') { result.labels = { ...englishLabels }; for (const [key, text] of Object.entries(englishElements)) result.elements[key].text = text; } return result; };
+let state = defaultsFor(language);
 let selected = 'title';
 let view = 'page';
 const elementFields = ['font','size','weight','color','element-background','transparent','x','y','width','radius'];
@@ -28,7 +31,7 @@ function generated(){
  const button=e.button;
  const css=`.aircursor-builder .aircursor-btn { width: 100%; box-sizing: border-box; font-family: inherit !important; font-size: inherit !important; font-weight: inherit !important; color: inherit !important; background: inherit !important; border-radius: inherit !important; border: 0; padding: 13px 18px; white-space: pre-wrap; }\n.aircursor-dialog { background: ${d.background} !important; color: ${d.color} !important; font-family: ${d.font.replace(/[;{}<>]/g,'')} !important; font-size: ${d.size}px !important; border-radius: ${d.radius}px !important; }`;
  const dump=x=>JSON.stringify(x,null,2);
- return `import React from 'react';\nimport AirCursor, { jaLabels } from 'air-cursor';\n\n// npm install air-cursor@2.0.0\nconst labels = { ...jaLabels, ...${dump(labels)} };\nconst options = ${dump({...props,labels:undefined})};\nconst titleStyle = ${dump(layoutStyle(e.title))};\nconst descriptionStyle = ${dump(layoutStyle(e.description))};\nconst buttonStyle = ${dump(layoutStyle(button))};\nconst componentCss = ${JSON.stringify(css)};\n\nexport default function AirCursorUI() {\n  return (\n    <section className="aircursor-builder" style={{ position: 'relative', width: '100%', aspectRatio: '8 / 5', minHeight: 300, overflow: 'hidden', background: ${JSON.stringify(state.canvasBackground)} }}>\n      <style>{componentCss}</style>\n      <h1 style={{ ...titleStyle, margin: 0 }}>${'{'}${JSON.stringify(e.title.text)}${'}'}</h1>\n      <p style={{ ...descriptionStyle, margin: 0 }}>${'{'}${JSON.stringify(e.description.text)}${'}'}</p>\n      <div style={buttonStyle}>\n        <AirCursor {...options} labels={labels}${o.regionSelectEnabled?' onRegionSelect={(rect) => console.log("選択範囲:", rect)}':''} />\n      </div>\n    </section>\n  );\n}\n`;
+ return `import React from 'react';\nimport AirCursor, { ${language === 'ja' ? 'jaLabels' : 'enLabels'} } from 'air-cursor';\n\n// npm install air-cursor@2.0.0\nconst labels = { ...${language === 'ja' ? 'jaLabels' : 'enLabels'}, ...${dump(labels)} };\nconst options = ${dump({...props,labels:undefined})};\nconst titleStyle = ${dump(layoutStyle(e.title))};\nconst descriptionStyle = ${dump(layoutStyle(e.description))};\nconst buttonStyle = ${dump(layoutStyle(button))};\nconst componentCss = ${JSON.stringify(css)};\n\nexport default function AirCursorUI() {\n  return (\n    <section className="aircursor-builder" style={{ position: 'relative', width: '100%', aspectRatio: '8 / 5', minHeight: 300, overflow: 'hidden', background: ${JSON.stringify(state.canvasBackground)} }}>\n      <style>{componentCss}</style>\n      <h1 style={{ ...titleStyle, margin: 0 }}>${'{'}${JSON.stringify(e.title.text)}${'}'}</h1>\n      <p style={{ ...descriptionStyle, margin: 0 }}>${'{'}${JSON.stringify(e.description.text)}${'}'}</p>\n      <div style={buttonStyle}>\n        <AirCursor {...options} labels={labels}${o.regionSelectEnabled?' onRegionSelect={(rect) => console.log("選択範囲:", rect)}':''} />\n      </div>\n    </section>\n  );\n}\n`;
 }
 function render(){
  $('stage').style.backgroundColor=state.canvasBackground;
@@ -42,6 +45,9 @@ function render(){
  $('code').textContent=generated();renderFields();
 }
 createLabelFields();
+collectTranslations();
+applyTranslations(language);
+$('language').addEventListener('change', event => { const oldDefaults=defaultsFor(language); const next=event.target.value; const nextDefaults=defaultsFor(next); for(const key of Object.keys(state.elements)) if(state.elements[key].text===oldDefaults.elements[key].text) state.elements[key].text=nextDefaults.elements[key].text; for(const key of Object.keys(state.labels)) if(state.labels[key]===oldDefaults.labels[key]) state.labels[key]=nextDefaults.labels[key]; language=next; applyTranslations(language); $('copy-status').textContent=''; render(); });
 document.querySelectorAll('[data-tab]').forEach(btn=>btn.addEventListener('click',()=>{document.querySelectorAll('[data-tab]').forEach(b=>b.setAttribute('aria-selected',String(b===btn)));document.querySelectorAll('.tab-content').forEach(panel=>panel.hidden=panel.id!==`tab-${btn.dataset.tab}`);}));
 $('selected').addEventListener('change',e=>{selected=e.target.value;render();});
 $('element-text').addEventListener('input',e=>{state.elements[selected].text=e.target.value;if(selected==='button')state.labels.start=e.target.value;render();});

@@ -6,7 +6,7 @@ MediaPipe Hands ベース。ウェブカメラ以外の機材は不要です。�
 
 **[デモを試す →](https://ritsuki-i.github.io/AirCursor/)** — ウェブカメラがあればブラウザでそのまま動きます。
 
-**[AirCursor Studio →](https://ritsuki-i.github.io/AirCursor/studio.html)** — UIと操作設定を画面で調整し、公開済みライブラリを使うReactコードをコピーできます。
+**[AirCursor Studio →](https://ritsuki-i.github.io/AirCursor/studio.html?lang=ja)** — UIと操作設定を画面で調整し、公開済みライブラリを使うReactコードをコピーできます。
 
 [English README](./README.md)
 
