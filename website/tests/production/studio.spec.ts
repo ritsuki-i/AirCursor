@@ -77,3 +77,34 @@ test('demo links to the studio in the currently selected language', async ({ pag
   await link.click();
   await expect(page.locator('html')).toHaveAttribute('lang', 'ja');
 });
+
+test('font choices preview in their own family and generate font loading links', async ({ page, context }) => {
+  await page.route('https://fonts.googleapis.com/**', route => route.fulfill({ status: 200, contentType: 'text/css', body: '' }));
+  await page.goto('/studio.html?lang=ja');
+  const picker = page.locator('.font-picker').first();
+  await picker.locator('.font-picker-toggle').click();
+  const font = picker.locator('.font-option', { hasText: 'Zen Maru Gothic' });
+  await expect(font).toHaveCSS('font-family', '"Zen Maru Gothic", sans-serif');
+  await font.click();
+  await expect(page.locator('#font')).toHaveValue('Zen Maru Gothic');
+  await expect(page.locator('[data-element="title"]')).toHaveCSS('font-family', '"Zen Maru Gothic"');
+  await expect(page.locator('#code')).toContainText('family=Zen+Maru+Gothic');
+  await expect(page.locator('#code')).toContainText('fontUrls.map');
+  const dialogPicker = page.locator('.font-picker').last();
+  await dialogPicker.locator('.font-picker-toggle').click();
+  await dialogPicker.locator('.font-option', { hasText: 'Inter' }).click();
+  await expect(page.locator('#code')).toContainText('family=Inter');
+  const code = await page.locator('#code').textContent();
+  const bundle = await build({ stdin: { contents: `${code}\nimport { createRoot } from 'react-dom/client';\ncreateRoot(document.getElementById('root')).render(<AirCursorUI />);`, resolveDir: path.resolve('../site'), loader: 'jsx' }, bundle: true, write: false, format: 'iife', platform: 'browser', define: { 'process.env.NODE_ENV': '"production"' } });
+  const resultPage = await context.newPage();
+  await resultPage.route('https://fonts.googleapis.com/**', route => route.fulfill({ status: 200, contentType: 'text/css', body: '' }));
+  await resultPage.goto('/studio.html');
+  await resultPage.setContent('<div id="root"></div>');
+  await resultPage.addScriptTag({ content: bundle.outputFiles[0].text });
+  await expect(resultPage.locator('link[href*="family=Zen+Maru+Gothic"]')).toHaveCount(1);
+  await expect(resultPage.locator('link[href*="family=Inter"]')).toHaveCount(1);
+  await expect(resultPage.locator('.aircursor-builder h1')).toHaveCSS('font-family', '"Zen Maru Gothic"');
+  await page.locator('#language').selectOption('en');
+  await expect(picker.locator('.font-picker-toggle')).toContainText('Choose a font');
+  await expect(page.locator('#font')).toHaveValue('Zen Maru Gothic');
+});
