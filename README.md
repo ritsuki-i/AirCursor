@@ -6,6 +6,8 @@ Built on MediaPipe Hands. No hardware beyond a webcam. Runs entirely in the brow
 
 **[Live demo →](https://ritsuki-i.github.io/AirCursor/)** — run it in your browser with a webcam.
 
+**[AirCursor Studio →](https://ritsuki-i.github.io/AirCursor/studio.html)** — visually customize a React UI and copy code using the published package.
+
 [日本語版 README](./README.ja.md)
 
 ```bash

@@ -1,14 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  One page, listed once. A site this small is not hard for a crawler to walk,
-  but a sitemap is what Search Console reads to say whether the page was seen
-  at all — which is the question worth being able to answer for a URL nothing
-  has linked to yet.
+  The demo and its standalone UI builder each have a canonical URL.
 -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://ritsuki-i.github.io/AirCursor/</loc>
     <changefreq>monthly</changefreq>
     <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://ritsuki-i.github.io/AirCursor/studio.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
   </url>
 </urlset>
