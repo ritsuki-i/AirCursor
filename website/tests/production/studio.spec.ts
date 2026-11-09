@@ -12,9 +12,9 @@ test('studio generates a working customized published React component', async ({
   await page.locator('#color').fill('#123456');
   await page.locator('#x').fill('20');
   await expect(page.locator('[data-element="button"] button')).toHaveText('始めよう');
+  await page.locator('#view-dialog').click();
   await page.locator('[data-tab="text"]').click();
   await page.locator('#label-dialogTitle').fill('操作ガイド');
-  await page.locator('#view-dialog').click();
   await expect(page.locator('#pv-dialogTitle')).toHaveText('操作ガイド');
   await page.locator('[data-tab="settings"]').click();
   await page.locator('#dominantHand').selectOption('left');
@@ -90,6 +90,7 @@ test('font choices preview in their own family and generate font loading links',
   await expect(page.locator('[data-element="title"]')).toHaveCSS('font-family', '"Zen Maru Gothic"');
   await expect(page.locator('#code')).toContainText('family=Zen+Maru+Gothic');
   await expect(page.locator('#code')).toContainText('fontUrls.map');
+  await page.locator('#view-dialog').click();
   const dialogPicker = page.locator('.font-picker').last();
   await dialogPicker.locator('.font-picker-toggle').click();
   await dialogPicker.locator('.font-option', { hasText: 'Inter' }).click();
@@ -105,6 +106,35 @@ test('font choices preview in their own family and generate font loading links',
   await expect(resultPage.locator('link[href*="family=Inter"]')).toHaveCount(1);
   await expect(resultPage.locator('.aircursor-builder h1')).toHaveCSS('font-family', '"Zen Maru Gothic"');
   await page.locator('#language').selectOption('en');
+  await page.locator('#view-page').click();
   await expect(picker.locator('.font-picker-toggle')).toContainText('Choose a font');
   await expect(page.locator('#font')).toHaveValue('Zen Maru Gothic');
+});
+
+test('editing controls follow the selected preview without losing changes', async ({ page }) => {
+  await page.goto('/studio.html?lang=ja');
+  await expect(page.locator('#editing-target')).toHaveText('編集中：画面');
+  await expect(page.locator('#page-design')).toBeVisible();
+  await expect(page.locator('#dialog-design')).toBeHidden();
+  await page.locator('#element-text').fill('私の画面');
+  await page.locator('#view-dialog').click();
+  await expect(page.locator('#editing-target')).toHaveText('編集中：説明ダイアログ');
+  await expect(page.locator('#view-dialog')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#page-design')).toBeHidden();
+  await expect(page.locator('#dialog-design')).toBeVisible();
+  await page.locator('#dialog-color').fill('#123456');
+  await page.locator('[data-tab="text"]').click();
+  await expect(page.locator('#label-dialogTitle')).toBeVisible();
+  await expect(page.locator('#label-start')).toBeHidden();
+  await page.locator('#label-dialogTitle').fill('手の操作');
+  await page.locator('#view-page').click();
+  await expect(page.locator('#label-start')).toBeVisible();
+  await expect(page.locator('#label-dialogTitle')).toBeHidden();
+  await page.locator('[data-tab="design"]').click();
+  await expect(page.locator('#element-text')).toHaveValue('私の画面');
+  await page.locator('#view-dialog').click();
+  await expect(page.locator('#dialog-color')).toHaveValue('#123456');
+  await expect(page.locator('#pv-dialogTitle')).toHaveText('手の操作');
+  await page.locator('#language').selectOption('en');
+  await expect(page.locator('#editing-target')).toHaveText('Editing: Instructions dialog');
 });
